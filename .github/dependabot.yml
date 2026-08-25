@@ -1,0 +1,25 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels: [dependencies, ci]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    labels: [dependencies, security]
+
+  - package-ecosystem: terraform
+    directory: /deploy/terraform/modules/rokh-oghab-k8s
+    schedule:
+      interval: weekly
+    labels: [dependencies, infrastructure]
+
+  - package-ecosystem: terraform
+    directory: /deploy/opentofu
+    schedule:
+      interval: weekly
+    labels: [dependencies, infrastructure]

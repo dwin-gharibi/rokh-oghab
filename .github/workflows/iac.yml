@@ -1,0 +1,78 @@
+name: infrastructure
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "deploy/**"
+      - ".github/workflows/iac.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    name: terraform
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: 1.9.8
+      - name: Check formatting
+        run: terraform fmt -check -recursive deploy/terraform deploy/opentofu
+      - name: Validate the module
+        working-directory: deploy/terraform/examples/kubernetes
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+
+  opentofu:
+    name: opentofu
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
+        with:
+          tofu_version: 1.8.4
+      - name: Validate the root module
+        working-directory: deploy/opentofu
+        run: |
+          tofu init -backend=false -input=false
+          tofu validate
+
+  ansible:
+    name: ansible
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install ansible
+        run: |
+          python3 -m pip install --quiet ansible-core ansible-lint
+          ansible-galaxy collection install -r deploy/ansible/requirements.yml
+      - name: Syntax check every playbook
+        working-directory: deploy/ansible
+        run: |
+          for playbook in site.yml controller.yml gateway.yml nodes.yml verify.yml emergency-deny.yml; do
+            echo "==> $playbook"
+            ansible-playbook --syntax-check -i inventory.example.ini "$playbook"
+          done
+      - name: Lint the roles
+        working-directory: deploy/ansible
+        run: ansible-lint --profile production || ansible-lint
+        continue-on-error: true
+
+  helm:
+    name: helm
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+        with:
+          version: v3.16.2
+      - name: Lint the chart
+        run: helm lint deploy/helm/rokh-oghab
+      - name: Render the chart
+        run: helm template rokh-oghab deploy/helm/rokh-oghab > /dev/null

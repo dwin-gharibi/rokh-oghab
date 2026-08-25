@@ -1,0 +1,74 @@
+name: end-to-end
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: ${{ matrix.suite.name }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - name: gateway
+            driver: driver.py
+          - name: adversarial
+            driver: security_driver.py
+          - name: control plane
+            driver: controller_driver.py
+          - name: command line
+            driver: cli_driver.py
+          - name: fuzz
+            driver: ../fuzz/fuzz.py --rounds 150
+          - name: chaos
+            driver: ../chaos/run.py --rounds 12 --workers 6
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Build the images
+        run: |
+          docker build --target gateway    -t rokh-oghab/gateway:dev .
+          docker build --target controller -t rokh-oghab/controller:dev .
+
+      - name: Prepare the environment
+        run: |
+          bash tests/e2e/make-certs.sh
+          python3 tests/e2e/make-bundle.py
+
+      - name: Start the stack
+        working-directory: tests/e2e
+        run: |
+          docker compose up -d
+          for _ in $(seq 1 30); do
+            if curl -sf --max-time 2 http://127.0.0.1:19145/healthz >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose logs
+          exit 1
+
+      - name: Run the suite
+        working-directory: tests/e2e
+        run: python3 ${{ matrix.suite.driver }}
+
+      - name: Collect logs on failure
+        if: failure()
+        working-directory: tests/e2e
+        run: docker compose logs --tail 400
+
+      - name: Tear down
+        if: always()
+        working-directory: tests/e2e
+        run: docker compose down -v --remove-orphans

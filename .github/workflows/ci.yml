@@ -1,0 +1,96 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  OPENRESTY_IMAGE: openresty/openresty:1.27.1.2-0-alpine-fat
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Byte-compile every Lua module
+        run: bash tests/lint.sh
+        env:
+          RO_TEST_IMAGE: ${{ env.OPENRESTY_IMAGE }}
+
+      - name: Check shell scripts
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          make lint-shell
+
+      - name: Parse every YAML document
+        run: |
+          python3 -m pip install --quiet pyyaml
+          python3 scripts/lint-yaml.py
+
+      - name: Compile every Python source
+        run: make lint-python
+
+  unit:
+    name: unit tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Run the Lua unit suite
+        run: bash tests/run-unit.sh
+
+      - name: Check every deny reason has a catalogue entry
+        run: python3 tests/check-reasons.py
+        env:
+          RO_TEST_IMAGE: ${{ env.OPENRESTY_IMAGE }}
+
+  examples:
+    name: examples
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Compile every example policy and validate every example manifest
+        run: bash tests/run-examples.sh
+        env:
+          RO_TEST_IMAGE: ${{ env.OPENRESTY_IMAGE }}
+
+  agent:
+    name: node agent
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install nftables
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq nftables
+      - name: Validate every generated ruleset
+        run: bash tests/run-agent.sh
+
+  manifests:
+    name: manifests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+        with:
+          version: v3.16.2
+
+      - name: Install kubeconform
+        run: |
+          curl -sSLo /tmp/kubeconform.tgz \
+            https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
+          tar -xzf /tmp/kubeconform.tgz -C /tmp
+          sudo install -m 0755 /tmp/kubeconform /usr/local/bin/
+
+      - name: Render and validate every manifest permutation
+        run: bash tests/run-manifests.sh

@@ -1,0 +1,45 @@
+name: enforcement
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  enforcement:
+    name: ${{ matrix.suite.name }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - name: node enforcement
+            script: tests/enforcement/run.sh
+          - name: sandbox bypass attempts
+            script: tests/enforcement/bypass.sh
+          - name: enforced sandbox demonstration
+            script: tests/run-sandbox-demo.sh
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install nftables
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq nftables
+
+      - name: Build the gateway image
+        run: docker build --target gateway -t rokh-oghab/gateway:dev .
+
+      - name: Pull the images the suite uses
+        run: |
+          docker pull -q openresty/openresty:1.27.1.2-0-alpine-fat
+          docker pull -q python:3.12-alpine
+
+      - name: Run the suite
+        run: sudo -E bash ${{ matrix.suite.script }}
+        env:
+          RO_GATEWAY_IMAGE: rokh-oghab/gateway:dev
