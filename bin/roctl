@@ -1,0 +1,663 @@
+#!/usr/bin/env python3
+import argparse
+import json
+import os
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+VERSION = "1.0.0"
+DEFAULT_ENDPOINT = "http://127.0.0.1:8081"
+CONFIG_PATHS = [
+    os.environ.get("ROCTL_CONFIG", ""),
+    os.path.expanduser("~/.rokh-oghab/config.json"),
+    "/etc/rokh-oghab/roctl.json",
+]
+
+
+class Error(Exception):
+    pass
+
+
+def load_config():
+    for path in CONFIG_PATHS:
+        if path and os.path.exists(path):
+            try:
+                with open(path) as fh:
+                    return json.load(fh)
+            except (OSError, ValueError) as exc:
+                raise Error("cannot read %s: %s" % (path, exc))
+    return {}
+
+
+class Client:
+    def __init__(self, endpoint, token, timeout=15):
+        parsed = urllib.parse.urlparse(endpoint)
+        if parsed.scheme not in ("http", "https"):
+            raise Error("%r is not a control-plane address; roctl speaks http "
+                        "and https and nothing else" % endpoint)
+        if not parsed.netloc:
+            raise Error("%r has no host" % endpoint)
+        self.endpoint = endpoint.rstrip("/")
+        self.token = token
+        self.timeout = timeout
+
+    def request(self, method, path, body=None, content_type="application/json",
+                raw=False):
+        url = self.endpoint + path
+        data = None
+        if body is not None:
+            data = body if isinstance(body, bytes) else json.dumps(body).encode()
+        req = urllib.request.Request(url, data=data, method=method)
+        req.add_header("Accept", "application/json")
+        req.add_header("User-Agent", "roctl/" + VERSION)
+        if self.token:
+            req.add_header("Authorization", "Bearer " + self.token)
+        if data is not None:
+            req.add_header("Content-Type", content_type)
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        try:
+            with opener.open(req, timeout=self.timeout) as res:
+                payload = res.read()
+                status = res.status
+        except urllib.error.HTTPError as exc:
+            payload = exc.read()
+            status = exc.code
+        except urllib.error.URLError as exc:
+            raise Error("cannot reach %s: %s" % (url, exc.reason))
+        if raw:
+            return status, payload
+        try:
+            return status, json.loads(payload.decode())
+        except (ValueError, UnicodeDecodeError):
+            return status, {"raw": payload.decode("utf-8", "replace")}
+
+
+def emit(args, payload, table=None):
+    if args.output == "json" or table is None:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return
+    rows = table(payload)
+    if not rows:
+        print("(no entries)")
+        return
+    widths = [max(len(str(r[i])) for r in rows) for i in range(len(rows[0]))]
+    for idx, row in enumerate(rows):
+        line = "  ".join(str(cell).ljust(widths[i]) for i, cell in enumerate(row))
+        print(line.rstrip())
+        if idx == 0:
+            print("  ".join("-" * w for w in widths))
+
+
+def check(status, payload, expect=(200, 201)):
+    if status not in expect:
+        message = payload.get("message") or payload.get("error") or payload
+        raise Error("server returned %d: %s" % (status, message))
+    return payload
+
+
+def read_document(path):
+    if path == "-":
+        data = sys.stdin.buffer.read()
+        return data, "application/yaml"
+    if not os.path.exists(path):
+        raise Error("no such file: %s" % path)
+    with open(path, "rb") as fh:
+        data = fh.read()
+    ctype = "application/json" if path.endswith(".json") else "application/yaml"
+    return data, ctype
+
+
+def quote_name(name):
+    if not isinstance(name, str) or name == "":
+        raise Error("a resource name is required")
+    quoted = urllib.parse.quote(name, safe="")
+    if len(quoted) > 512:
+        raise Error("resource name is too long: %d characters" % len(name))
+    return quoted
+
+
+def document_name(data, explicit):
+    if explicit:
+        return explicit
+    text = data.decode("utf-8", "replace")
+    try:
+        doc = json.loads(text)
+        meta = doc.get("metadata") or {}
+        return meta.get("name") or doc.get("name")
+    except ValueError:
+        pass
+    metadata_depth = None
+    child_depth = None
+    top_level_name = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#") or not stripped:
+            continue
+        lead = line[:len(line) - len(line.lstrip())]
+        if "\t" in lead:
+            return None
+        depth = len(lead)
+        if metadata_depth is not None and depth <= metadata_depth:
+            metadata_depth, child_depth = None, None
+        if depth == 0 and stripped.rstrip(":") == "metadata":
+            metadata_depth, child_depth = 0, None
+            continue
+        if metadata_depth is not None:
+            if child_depth is None:
+                child_depth = depth
+            if depth == child_depth and stripped.startswith("name:"):
+                value = stripped.split(":", 1)[1].strip().strip("\"'")
+                if value:
+                    return value
+        if depth == 0 and stripped.startswith("name:"):
+            value = stripped.split(":", 1)[1].strip().strip("\"'")
+            if value and top_level_name is None:
+                top_level_name = value
+    return top_level_name
+
+
+def cmd_status(client, args):
+    status, payload = client.request("GET", "/v1/status")
+    check(status, payload)
+    emit(args, payload, lambda p: [
+        ["FIELD", "VALUE"],
+        ["activeVersion", p.get("activeVersion")],
+        ["revision", p.get("revision")],
+        ["policies", p.get("policyCount")],
+        ["profiles", p.get("profileCount")],
+        ["tokens", p.get("tokenCount")],
+        ["sources", p.get("sourceCount")],
+        ["emergencyDeny", p.get("emergencyDeny")],
+    ])
+
+
+def cmd_policy_list(client, args):
+    status, payload = client.request("GET", "/v1/policies")
+    check(status, payload)
+    emit(args, payload, lambda p: [["NAME", "TIER", "PRIORITY", "RULES"]] +
+         [[x["name"], x["tier"], x["priority"], x["rules"]]
+          for x in p.get("policies", [])])
+
+
+def cmd_policy_get(client, args):
+    status, payload = client.request("GET", "/v1/policies/" + quote_name(args.name))
+    check(status, payload)
+    print(json.dumps(payload, indent=2, sort_keys=True))
+
+
+def cmd_policy_apply(client, args):
+    data, ctype = read_document(args.file)
+    name = document_name(data, args.name)
+    if not name:
+        raise Error("cannot determine the policy name; pass --name")
+    status, payload = client.request("PUT", "/v1/policies/" + quote_name(name), data, ctype)
+    check(status, payload)
+    print("policy %s staged (revision %s)" % (name, payload.get("revision")))
+    if args.publish:
+        cmd_publish(client, args)
+
+
+def cmd_policy_delete(client, args):
+    status, payload = client.request("DELETE", "/v1/policies/" + quote_name(args.name))
+    check(status, payload)
+    print("policy %s deleted (revision %s)" % (args.name, payload.get("revision")))
+
+
+def cmd_profile_list(client, args):
+    status, payload = client.request("GET", "/v1/profiles")
+    check(status, payload)
+    emit(args, payload, lambda p: [["NAME"]] +
+         [[x["name"]] for x in p.get("profiles", [])])
+
+
+def cmd_profile_get(client, args):
+    status, payload = client.request("GET", "/v1/profiles/" + quote_name(args.name))
+    check(status, payload)
+    print(json.dumps(payload, indent=2, sort_keys=True))
+
+
+def cmd_profile_apply(client, args):
+    data, ctype = read_document(args.file)
+    name = document_name(data, args.name)
+    if not name:
+        raise Error("cannot determine the profile name; pass --name")
+    status, payload = client.request("PUT", "/v1/profiles/" + quote_name(name), data, ctype)
+    check(status, payload)
+    print("profile %s staged (revision %s)" % (name, payload.get("revision")))
+    if args.publish:
+        cmd_publish(client, args)
+
+
+def cmd_profile_delete(client, args):
+    status, payload = client.request("DELETE", "/v1/profiles/" + quote_name(args.name))
+    check(status, payload)
+    print("profile %s deleted (revision %s)" % (args.name, payload.get("revision")))
+
+
+def cmd_identity_list(client, args):
+    status, payload = client.request("GET", "/v1/identities")
+    check(status, payload)
+    emit(args, payload, lambda p: [["DIGEST", "IDENTITY", "NAMESPACE", "PROFILE",
+                                    "SERVICE ACCOUNT"]] +
+         [[t["digest"], t.get("id"), t.get("namespace"), t.get("profile"),
+           t.get("serviceAccount")] for t in p.get("tokens", [])])
+
+
+def cmd_identity_issue(client, args):
+    body = {
+        "namespace": args.namespace,
+        "profile": args.profile,
+        "serviceAccount": args.service_account,
+    }
+    if args.id:
+        body["id"] = args.id
+    if args.label:
+        body["labels"] = dict(kv.split("=", 1) for kv in args.label)
+    status, payload = client.request("POST", "/v1/identities/tokens", body)
+    check(status, payload, expect=(200, 201))
+    if args.output == "json":
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return
+    print("token issued for %s (profile %s)" %
+          (payload["identity"]["id"], payload["identity"]["profile"]))
+    print()
+    print("  %s" % payload["token"])
+    print()
+    print("This value is shown once. Store it in the sandbox's secret now.")
+    print("Publish to activate:  roctl publish")
+
+
+def cmd_identity_revoke(client, args):
+    status, payload = client.request("DELETE",
+                                     "/v1/identities/tokens/" + args.digest)
+    check(status, payload)
+    print("token %s revoked (revision %s)" % (args.digest, payload.get("revision")))
+
+
+def cmd_identity_sources(client, args):
+    data, ctype = read_document(args.file)
+    status, payload = client.request("PUT", "/v1/identities/sources", data, ctype)
+    check(status, payload)
+    print("%s source mappings staged (revision %s)"
+          % (payload.get("sources"), payload.get("revision")))
+
+
+def cmd_settings_get(client, args):
+    status, payload = client.request("GET", "/v1/settings")
+    check(status, payload)
+    emit(args, payload, lambda p: [["SETTING", "VALUE"]] + [
+        [key, json.dumps(p[key]) if isinstance(p[key], (dict, list))
+         else p[key]]
+        for key in sorted(p)
+    ])
+
+
+def cmd_settings_set(client, args):
+    data, ctype = read_document(args.file)
+    status, payload = client.request("PUT", "/v1/settings", data, ctype)
+    check(status, payload)
+    print("settings updated (revision %s)" % payload.get("revision"))
+
+
+def cmd_publish(client, args):
+    note = getattr(args, "note", None)
+    status, payload = client.request("POST", "/v1/publish", {"note": note})
+    check(status, payload)
+    summary = payload.get("summary", {})
+    print("published version %s (%s policies, %s rules)"
+          % (payload.get("version"), summary.get("policyCount"),
+             summary.get("ruleCount")))
+
+
+def cmd_versions(client, args):
+    status, payload = client.request("GET", "/v1/versions")
+    check(status, payload)
+    active = payload.get("active")
+    emit(args, payload, lambda p: [["VERSION", "ACTIVE", "PUBLISHED", "ACTOR",
+                                    "POLICIES", "RULES", "NOTE"]] +
+         [[v["version"], "*" if v["version"] == active else "",
+           int(v.get("publishedAt", 0)), v.get("actor"), v.get("policyCount"),
+           v.get("ruleCount"), v.get("note") or ""]
+          for v in p.get("versions", [])])
+
+
+def cmd_version_get(client, args):
+    status, payload = client.request("GET", "/v1/versions/%d" % args.version)
+    check(status, payload)
+    print(json.dumps(payload, indent=2, sort_keys=True))
+
+
+def cmd_rollback(client, args):
+    status, payload = client.request("POST", "/v1/rollback",
+                                     {"version": args.version})
+    check(status, payload)
+    print("rolled back to version %s" % payload.get("version"))
+
+
+def cmd_emergency(client, args):
+    enabled = args.state == "on"
+    status, payload = client.request("POST", "/v1/emergency-deny",
+                                     {"enabled": enabled})
+    check(status, payload)
+    if enabled:
+        print("EMERGENCY DENY ENGAGED - all egress is refused "
+              "(bundle version %s)" % payload.get("version"))
+    else:
+        print("emergency deny lifted (bundle version %s)" % payload.get("version"))
+
+
+def cmd_validate(client, args):
+    data, ctype = read_document(args.file)
+    status, payload = client.request("POST", "/v1/validate", data, ctype)
+    check(status, payload)
+    if payload.get("valid"):
+        summary = payload.get("summary", {})
+        print("valid: %s policies, %s rules"
+              % (summary.get("policyCount"), summary.get("ruleCount")))
+        return 0
+    print("INVALID: %s" % payload.get("error"))
+    return 2
+
+
+def cmd_preview(client, args):
+    status, payload = client.request("POST", "/v1/preview", {})
+    check(status, payload)
+    if not payload.get("valid"):
+        print("staged configuration is INVALID: %s" % payload.get("error"))
+        return 2
+    if args.output == "json":
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    summary = payload["summary"]
+    print("staged configuration is valid")
+    print("  policies: %s" % summary.get("policyCount"))
+    print("  rules:    %s" % summary.get("ruleCount"))
+    for p in summary.get("policies", []):
+        print("  - %-28s tier=%-9s allow=%-3s deny=%s"
+              % (p["name"], p["tier"], p["allowRules"], p["denyRules"]))
+    return 0
+
+
+def cmd_simulate(client, args):
+    body = {
+        "host": args.host,
+        "port": args.port,
+        "protocol": args.protocol,
+        "profile": args.profile,
+        "namespace": args.namespace,
+        "serviceAccount": args.service_account,
+    }
+    if args.method:
+        body["method"] = args.method
+    if args.path:
+        body["path"] = args.path
+    if args.identity:
+        body["identity"] = args.identity
+    status, payload = client.request("POST", "/v1/simulate", body)
+    check(status, payload)
+    if args.output == "json":
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if payload.get("decision") == "allow" else 3
+    decision = payload.get("decision")
+    marker = "ALLOW" if decision == "allow" else "DENY "
+    print("%s  %s:%s (%s)" % (marker, args.host, args.port, args.protocol))
+    print("  reason: %s" % payload.get("reason"))
+    if payload.get("rule"):
+        print("  rule:   %s (policy %s)" % (payload["rule"], payload.get("policy")))
+    limits = payload.get("limits") or {}
+    active = {k: v for k, v in limits.items() if v}
+    if active:
+        print("  limits: %s" % json.dumps(active))
+    print("  bundle: version %s" % payload.get("bundleVersion"))
+    return 0 if decision == "allow" else 3
+
+
+def gateway_client(args):
+    if not args.gateway_token:
+        raise Error(
+            "no gateway admin token is set. The controller token is a "
+            "different, more privileged credential and is never sent to a "
+            "gateway. Set --gateway-token, ROCTL_GATEWAY_TOKEN, or "
+            "gatewayToken in the config file.")
+    return Client(args.gateway, args.gateway_token, args.timeout)
+
+
+def cmd_gateway_status(client, args):
+    gw = gateway_client(args)
+    status, payload = gw.request("GET", "/v1/status")
+    check(status, payload)
+    policy = payload.get("policy") or {}
+    emit(args, payload, lambda p: [
+        ["FIELD", "VALUE"],
+        ["node", p.get("node")],
+        ["mode", p.get("mode")],
+        ["bundleVersion", policy.get("version")],
+        ["bundleDigest", policy.get("digest")],
+        ["stale", policy.get("stale")],
+        ["emergencyDeny", p.get("emergencyDeny")],
+    ])
+
+
+def cmd_gateway_audit(client, args):
+    gw = gateway_client(args)
+    path = "/v1/audit?limit=%d" % args.limit
+    if args.action:
+        path += "&action=" + args.action
+    status, payload = gw.request("GET", path)
+    check(status, payload)
+    for ev in reversed(payload.get("events", [])):
+        print(json.dumps(ev, sort_keys=True))
+
+
+def cmd_gateway_metrics(client, args):
+    gw = gateway_client(args)
+    status, payload = gw.request("GET", "/metrics", raw=True)
+    if status != 200:
+        raise Error("gateway returned %d" % status)
+    sys.stdout.write(payload.decode())
+
+
+def cmd_gateway_emergency(client, args):
+    gw = gateway_client(args)
+    status, payload = gw.request("POST", "/v1/emergency-deny",
+                                 {"enabled": args.state == "on"})
+    check(status, payload)
+    print("gateway emergency deny: %s" % payload.get("emergencyDeny"))
+
+
+def build_parser():
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--endpoint", default=argparse.SUPPRESS,
+                        help="controller base URL (env ROCTL_ENDPOINT)")
+    common.add_argument("--token", default=argparse.SUPPRESS,
+                        help="bearer token (env ROCTL_TOKEN)")
+    common.add_argument("--gateway", default=argparse.SUPPRESS,
+                        help="gateway admin base URL (env ROCTL_GATEWAY)")
+    common.add_argument("--gateway-token", default=argparse.SUPPRESS,
+                        help="gateway admin token (env ROCTL_GATEWAY_TOKEN)")
+    common.add_argument("-o", "--output", choices=("table", "json"),
+                        default=argparse.SUPPRESS,
+                        help="output format (default table)")
+    common.add_argument("--timeout", type=float, default=argparse.SUPPRESS,
+                        help="request timeout in seconds (default 15)")
+
+    p = argparse.ArgumentParser(
+        prog="roctl", parents=[common],
+        description="Configure and inspect the Rokh Oghab egress gateway.")
+    p.add_argument("--version", action="version", version="roctl " + VERSION)
+
+    original_add_parser = argparse._SubParsersAction.add_parser
+
+    def add_parser(self, name, **kwargs):
+        parents = list(kwargs.pop("parents", []))
+        if common not in parents:
+            parents.append(common)
+        kwargs["parents"] = parents
+        return original_add_parser(self, name, **kwargs)
+
+    argparse._SubParsersAction.add_parser = add_parser
+    try:
+        sub = p.add_subparsers(dest="command", required=True)
+
+        sub.add_parser("status", help="show control-plane status").set_defaults(
+            func=cmd_status)
+
+        policy = sub.add_parser("policy", help="manage egress policies")
+        psub = policy.add_subparsers(dest="subcommand", required=True)
+        psub.add_parser("list").set_defaults(func=cmd_policy_list)
+        g = psub.add_parser("get")
+        g.add_argument("name")
+        g.set_defaults(func=cmd_policy_get)
+        ap = psub.add_parser("apply")
+        ap.add_argument("-f", "--file", required=True,
+                        help="policy document (YAML or JSON, - for stdin)")
+        ap.add_argument("--name", default=None)
+        ap.add_argument("--publish", action="store_true",
+                        help="publish immediately after staging")
+        ap.add_argument("--note", default=None)
+        ap.set_defaults(func=cmd_policy_apply)
+        dl = psub.add_parser("delete")
+        dl.add_argument("name")
+        dl.set_defaults(func=cmd_policy_delete)
+
+        profile = sub.add_parser("profile", help="manage sandbox profiles")
+        fsub = profile.add_subparsers(dest="subcommand", required=True)
+        fsub.add_parser("list").set_defaults(func=cmd_profile_list)
+        fg = fsub.add_parser("get")
+        fg.add_argument("name")
+        fg.set_defaults(func=cmd_profile_get)
+        fa = fsub.add_parser("apply")
+        fa.add_argument("-f", "--file", required=True)
+        fa.add_argument("--name", default=None)
+        fa.add_argument("--publish", action="store_true")
+        fa.add_argument("--note", default=None)
+        fa.set_defaults(func=cmd_profile_apply)
+        fd = fsub.add_parser("delete")
+        fd.add_argument("name")
+        fd.set_defaults(func=cmd_profile_delete)
+
+        identity = sub.add_parser("identity", help="manage sandbox identities")
+        isub = identity.add_subparsers(dest="subcommand", required=True)
+        isub.add_parser("list").set_defaults(func=cmd_identity_list)
+        ii = isub.add_parser("issue", help="mint a sandbox proxy token")
+        ii.add_argument("--namespace", required=True)
+        ii.add_argument("--profile", required=True)
+        ii.add_argument("--service-account", default="-")
+        ii.add_argument("--id", default=None)
+        ii.add_argument("--label", action="append", default=[],
+                        help="key=value identity label (repeatable)")
+        ii.set_defaults(func=cmd_identity_issue)
+        ir = isub.add_parser("revoke")
+        ir.add_argument("digest")
+        ir.set_defaults(func=cmd_identity_revoke)
+        isrc = isub.add_parser("sources", help="replace source-address identities")
+        isrc.add_argument("-f", "--file", required=True)
+        isrc.set_defaults(func=cmd_identity_sources)
+
+        settings = sub.add_parser("settings", help="global settings")
+        ssub = settings.add_subparsers(dest="subcommand", required=True)
+        ssub.add_parser("get").set_defaults(func=cmd_settings_get)
+        ss = ssub.add_parser("set")
+        ss.add_argument("-f", "--file", required=True)
+        ss.set_defaults(func=cmd_settings_set)
+
+        pub = sub.add_parser("publish", help="compile and activate a new bundle")
+        pub.add_argument("--note", default=None)
+        pub.set_defaults(func=cmd_publish)
+
+        sub.add_parser("versions", help="list bundle versions").set_defaults(
+            func=cmd_versions)
+
+        vg = sub.add_parser("version", help="show a published bundle")
+        vg.add_argument("version", type=int)
+        vg.set_defaults(func=cmd_version_get)
+
+        rb = sub.add_parser("rollback", help="activate a previous bundle")
+        rb.add_argument("version", type=int)
+        rb.set_defaults(func=cmd_rollback)
+
+        em = sub.add_parser("emergency-deny", help="stop or resume all egress")
+        em.add_argument("state", choices=("on", "off"))
+        em.set_defaults(func=cmd_emergency)
+
+        va = sub.add_parser("validate", help="validate a document without staging it")
+        va.add_argument("-f", "--file", required=True)
+        va.set_defaults(func=cmd_validate)
+
+        sub.add_parser("preview", help="validate the staged configuration").set_defaults(
+            func=cmd_preview)
+
+        si = sub.add_parser("simulate", help="ask what the active policy would decide")
+        si.add_argument("--host", required=True)
+        si.add_argument("--port", type=int, default=443)
+        si.add_argument("--protocol", default="https",
+                        choices=("http", "https", "tcp"))
+        si.add_argument("--profile", default="-")
+        si.add_argument("--namespace", default="-")
+        si.add_argument("--service-account", default="-")
+        si.add_argument("--identity", default=None)
+        si.add_argument("--method", default=None)
+        si.add_argument("--path", default=None)
+        si.set_defaults(func=cmd_simulate)
+
+        gw = sub.add_parser("gateway", help="inspect a running gateway")
+        gsub = gw.add_subparsers(dest="subcommand", required=True)
+        gsub.add_parser("status").set_defaults(func=cmd_gateway_status)
+        gsub.add_parser("metrics").set_defaults(func=cmd_gateway_metrics)
+        ga = gsub.add_parser("audit")
+        ga.add_argument("--limit", type=int, default=50)
+        ga.add_argument("--action", default=None, choices=("allow", "deny"))
+        ga.set_defaults(func=cmd_gateway_audit)
+        ge = gsub.add_parser("emergency-deny")
+        ge.add_argument("state", choices=("on", "off"))
+        ge.set_defaults(func=cmd_gateway_emergency)
+    finally:
+        argparse._SubParsersAction.add_parser = original_add_parser
+
+    return p
+
+
+def main(argv=None):
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        config = load_config()
+    except Error as exc:
+        print("roctl: %s" % exc, file=sys.stderr)
+        return 1
+
+    args.output = getattr(args, "output", None) or "table"
+    args.timeout = getattr(args, "timeout", None)
+    if args.timeout is None:
+        args.timeout = 15.0
+    if not (args.timeout > 0) or args.timeout > 3600:
+        print("roctl: --timeout must be between 0 and 3600 seconds, got %s"
+              % args.timeout, file=sys.stderr)
+        return 1
+    args.endpoint = (getattr(args, "endpoint", None)
+                     or os.environ.get("ROCTL_ENDPOINT")
+                     or config.get("endpoint") or DEFAULT_ENDPOINT)
+    args.token = (getattr(args, "token", None) or os.environ.get("ROCTL_TOKEN")
+                  or config.get("token") or "")
+    args.gateway = (getattr(args, "gateway", None)
+                    or os.environ.get("ROCTL_GATEWAY")
+                    or config.get("gateway") or "http://127.0.0.1:9145")
+    args.gateway_token = (getattr(args, "gateway_token", None)
+                          or os.environ.get("ROCTL_GATEWAY_TOKEN")
+                          or config.get("gatewayToken") or "")
+
+    try:
+        client = Client(args.endpoint, args.token, args.timeout)
+        rc = args.func(client, args)
+        return rc if isinstance(rc, int) else 0
+    except Error as exc:
+        print("roctl: %s" % exc, file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        return 130
+
+
+if __name__ == "__main__":
+    sys.exit(main())
