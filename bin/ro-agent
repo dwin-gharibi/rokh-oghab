@@ -1,0 +1,520 @@
+#!/bin/sh
+set -eu
+
+RO_TABLE="${RO_TABLE:-rokh_oghab}"
+RO_GATEWAY_ADDR="${RO_GATEWAY_ADDR:-}"
+RO_PROXY_PORT="${RO_PROXY_PORT:-3128}"
+RO_DNS_PORT="${RO_DNS_PORT:-5353}"
+RO_TRANSPARENT_HTTP_PORT="${RO_TRANSPARENT_HTTP_PORT:-3080}"
+RO_TRANSPARENT_TLS_PORT="${RO_TRANSPARENT_TLS_PORT:-3443}"
+RO_SANDBOX_CIDRS="${RO_SANDBOX_CIDRS:-}"
+RO_SANDBOX_CIDRS6="${RO_SANDBOX_CIDRS6:-}"
+RO_ALLOW_CIDRS="${RO_ALLOW_CIDRS:-}"
+RO_TRANSPARENT="${RO_TRANSPARENT:-false}"
+RO_DNS_REDIRECT="${RO_DNS_REDIRECT:-false}"
+RO_SANDBOX_IFACES="${RO_SANDBOX_IFACES:-}"
+RO_ENFORCE_RP_FILTER="${RO_ENFORCE_RP_FILTER:-true}"
+RO_HOOK="${RO_HOOK:-forward}"
+RO_MATCH_PRE_DNAT="${RO_MATCH_PRE_DNAT:-true}"
+RO_BLOCK_IPV6="${RO_BLOCK_IPV6:-true}"
+RO_IPV6_UNSCOPED="${RO_IPV6_UNSCOPED:-refuse}"
+RO_IPV6_PRESENT="${RO_IPV6_PRESENT:-auto}"
+RO_RECONCILE_SECONDS="${RO_RECONCILE_SECONDS:-15}"
+RO_LOG_DROPS="${RO_LOG_DROPS:-false}"
+RO_FLUSH_CONNTRACK="${RO_FLUSH_CONNTRACK:-true}"
+RO_BOOTSTRAP_DENY="${RO_BOOTSTRAP_DENY:-true}"
+RO_ALLOW_DEFAULT_ROUTE="${RO_ALLOW_DEFAULT_ROUTE:-false}"
+RO_NFT="${RO_NFT:-nft}"
+
+log() {
+    printf '{"component":"ro-agent","level":"%s","msg":"%s"}\n' "$1" "$2" >&2
+}
+
+die() {
+    log error "$1"
+    exit 1
+}
+
+csv_to_elements() {
+    printf '%s\n' "$1" | tr ',' '\n' | while IFS= read -r item; do
+        trimmed=$(printf '%s' "$item" | tr -d '[:space:]')
+        [ -n "$trimmed" ] && printf '%s, ' "$trimmed"
+    done
+}
+
+validate_cidrs() {
+    name="$1"
+    value="$2"
+    [ -z "$value" ] && return 0
+    old_ifs="$IFS"
+    IFS=','
+    for item in $value; do
+        trimmed=$(printf '%s' "$item" | tr -d '[:space:]')
+        [ -z "$trimmed" ] && continue
+        case "$trimmed" in
+            *[!0-9./a-fA-F:]*)
+                IFS="$old_ifs"
+                die "$name contains an invalid character in: $trimmed"
+                ;;
+        esac
+        case "$trimmed" in
+            *:*) ;;
+            *.*.*.*) ;;
+            *)
+                IFS="$old_ifs"
+                die "$name entry is not an address or CIDR: $trimmed"
+                ;;
+        esac
+    done
+    IFS="$old_ifs"
+    return 0
+}
+
+validate_port() {
+    case "$2" in
+        ''|*[!0-9]*) die "$1 must be a number, got '$2'" ;;
+    esac
+    [ "$2" -ge 1 ] 2>/dev/null || die "$1 must be >= 1"
+    [ "$2" -le 65535 ] 2>/dev/null || die "$1 must be <= 65535"
+}
+
+validate_addr() {
+    case "$1" in
+        ''|*[!0-9.]*) die "RO_GATEWAY_ADDR must be a bare IPv4 address, got '$1'" ;;
+    esac
+    _octets=0
+    _old_ifs="$IFS"
+    IFS='.'
+    for _o in $1; do
+        _octets=$((_octets + 1))
+        case "$_o" in
+            ''|*[!0-9]*) IFS="$_old_ifs"
+                die "RO_GATEWAY_ADDR has an empty or non-numeric octet: '$1'" ;;
+        esac
+        if [ "${#_o}" -gt 3 ] || [ "$_o" -gt 255 ]; then
+            IFS="$_old_ifs"
+            die "RO_GATEWAY_ADDR octet out of range: '$1'"
+        fi
+        case "$_o" in
+            0|[1-9]*) ;;
+            *) IFS="$_old_ifs"
+                die "RO_GATEWAY_ADDR octet has a leading zero: '$1'" ;;
+        esac
+    done
+    IFS="$_old_ifs"
+    [ "$_octets" -eq 4 ] || die "RO_GATEWAY_ADDR must have four octets, got '$1'"
+}
+
+preflight() {
+    [ -n "$RO_GATEWAY_ADDR" ] || die "RO_GATEWAY_ADDR is required"
+    validate_addr "$RO_GATEWAY_ADDR"
+    [ -n "$RO_SANDBOX_CIDRS" ] || die "RO_SANDBOX_CIDRS is required"
+    validate_cidrs RO_SANDBOX_CIDRS "$RO_SANDBOX_CIDRS"
+    validate_cidrs RO_ALLOW_CIDRS "$RO_ALLOW_CIDRS"
+    check_allow_cidrs
+    validate_port RO_PROXY_PORT "$RO_PROXY_PORT"
+    validate_port RO_DNS_PORT "$RO_DNS_PORT"
+    validate_port RO_TRANSPARENT_HTTP_PORT "$RO_TRANSPARENT_HTTP_PORT"
+    validate_port RO_TRANSPARENT_TLS_PORT "$RO_TRANSPARENT_TLS_PORT"
+    case "$RO_HOOK" in
+        forward|output|both) ;;
+        *) die "RO_HOOK must be forward, output or both" ;;
+    esac
+    case "$RO_TABLE" in
+        ''|*[!a-zA-Z0-9_]*) die "RO_TABLE must be alphanumeric" ;;
+    esac
+    if [ -n "$RO_SANDBOX_IFACES" ]; then
+        case "$RO_SANDBOX_IFACES" in
+            *[!a-zA-Z0-9_,.*+-]*)
+                die "RO_SANDBOX_IFACES may only contain interface names, commas and *"
+                ;;
+        esac
+    fi
+    validate_cidrs RO_SANDBOX_CIDRS6 "$RO_SANDBOX_CIDRS6"
+    check_ipv6_scope
+}
+
+host_has_ipv6() {
+    case "$RO_IPV6_PRESENT" in
+        yes) return 0 ;;
+        no)  return 1 ;;
+    esac
+    [ -d /proc/sys/net/ipv6 ] || return 1
+    disabled="$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6 2>/dev/null || echo 0)"
+    if [ "$disabled" = "1" ]; then
+        return 1
+    fi
+    return 0
+}
+
+check_ipv6_scope() {
+    [ "$RO_BLOCK_IPV6" = "true" ] || return 0
+    [ -n "$RO_SANDBOX_CIDRS6" ] && return 0
+    if [ -n "$RO_SANDBOX_IFACES" ]; then
+        case "$RO_HOOK" in
+            forward|both) return 0 ;;
+        esac
+    fi
+    if ! host_has_ipv6; then
+        log info "ipv6 is disabled on this host, so there is nothing to scope"
+        return 0
+    fi
+    if [ "$RO_IPV6_UNSCOPED" = "allow" ]; then
+        log warn "ipv6 is enabled on this host but no sandbox ipv6 range or interface is configured, so ipv6 egress from sandboxes is NOT filtered; continuing because RO_IPV6_UNSCOPED=allow"
+        return 0
+    fi
+    die "RO_BLOCK_IPV6 is true but this host has ipv6 enabled and neither RO_SANDBOX_CIDRS6 nor RO_SANDBOX_IFACES is set, so ipv6 egress cannot be matched and would leave unfiltered. Set RO_SANDBOX_CIDRS6 to the sandbox ipv6 ranges, or RO_SANDBOX_IFACES to the sandbox interfaces, or RO_IPV6_UNSCOPED=allow to accept unfiltered ipv6 deliberately."
+}
+
+check_allow_cidrs() {
+    [ -n "$RO_ALLOW_CIDRS" ] || return 0
+    _old_ifs="$IFS"
+    IFS=','
+    for _c in $RO_ALLOW_CIDRS; do
+        _c=$(printf '%s' "$_c" | tr -d '[:space:]')
+        case "$_c" in
+            0.0.0.0/0|::/0|0.0.0.0/[0-7]|::/[0-7])
+                IFS="$_old_ifs"
+                if [ "$RO_ALLOW_DEFAULT_ROUTE" = "true" ]; then
+                    log warn "RO_ALLOW_CIDRS contains $_c, so sandboxes may reach every destination directly without passing through the gateway; continuing because RO_ALLOW_DEFAULT_ROUTE=true"
+                    return 0
+                fi
+                die "RO_ALLOW_CIDRS contains $_c, which accepts every destination ahead of the drop and removes the egress boundary entirely. Name the specific ranges the sandbox may reach directly, or set RO_ALLOW_DEFAULT_ROUTE=true to accept an unrestricted node deliberately."
+                ;;
+        esac
+    done
+    IFS="$_old_ifs"
+}
+
+check_rp_filter() {
+    all="/proc/sys/net/ipv4/conf/all/rp_filter"
+    default="/proc/sys/net/ipv4/conf/default/rp_filter"
+    [ -r "$all" ] || return 0
+
+    value="$(cat "$all" 2>/dev/null || echo 0)"
+    if [ "$value" = "0" ]; then
+        if [ "$RO_ENFORCE_RP_FILTER" = "true" ]; then
+            if printf '1' > "$all" 2>/dev/null; then
+                printf '1' > "$default" 2>/dev/null || true
+                log info "enabled reverse path filtering to reject spoofed sources"
+            else
+                log warn "reverse path filtering is disabled and could not be enabled; a sandbox holding NET_RAW could send packets with a forged source address"
+            fi
+        else
+            log warn "reverse path filtering is disabled; set RO_ENFORCE_RP_FILTER=true or enable net.ipv4.conf.all.rp_filter"
+        fi
+    fi
+}
+
+drop_verdict() {
+    if [ "$RO_LOG_DROPS" = "true" ]; then
+        printf 'limit rate 10/second burst 20 packets log prefix "rokh-oghab-drop " level info counter drop'
+    else
+        printf 'counter drop'
+    fi
+}
+
+gateway_accept() {
+    proto="$1"
+    port="$2"
+    printf '        ip daddr %s %s dport %s counter accept\n' \
+        "$RO_GATEWAY_ADDR" "$proto" "$port"
+    if [ "$RO_MATCH_PRE_DNAT" = "true" ]; then
+        printf '        ct original ip daddr %s %s dport %s counter accept\n' \
+            "$RO_GATEWAY_ADDR" "$proto" "$port"
+    fi
+}
+
+emit_sandbox_chain() {
+    cat <<EOF
+    chain sandbox_egress {
+        ct state established,related counter accept
+        ct state invalid $(drop_verdict)
+
+EOF
+    gateway_accept tcp "${RO_PROXY_PORT}"
+    gateway_accept tcp "${RO_DNS_PORT}"
+    gateway_accept udp "${RO_DNS_PORT}"
+
+    if [ "$RO_DNS_REDIRECT" = "true" ]; then
+        gateway_accept tcp 53
+        gateway_accept udp 53
+    fi
+
+    if [ "$RO_TRANSPARENT" = "true" ]; then
+        gateway_accept tcp "${RO_TRANSPARENT_HTTP_PORT}"
+        gateway_accept tcp "${RO_TRANSPARENT_TLS_PORT}"
+    fi
+
+    if [ -n "$RO_ALLOW_CIDRS" ]; then
+        cat <<EOF
+        ip daddr @ro_allowed counter accept
+EOF
+    fi
+
+    if [ "$RO_BLOCK_IPV6" = "true" ]; then
+        cat <<EOF
+        meta nfproto ipv6 $(drop_verdict)
+EOF
+    fi
+
+    cat <<EOF
+        $(drop_verdict)
+    }
+EOF
+}
+
+iface_set() {
+    out=""
+    old_ifs="$IFS"
+    IFS=','
+    for item in $RO_SANDBOX_IFACES; do
+        trimmed=$(printf '%s' "$item" | tr -d '[:space:]')
+        [ -z "$trimmed" ] && continue
+        out="${out}\"${trimmed}\", "
+    done
+    IFS="$old_ifs"
+    printf '%s' "${out%, }"
+}
+
+emit_hook_chain() {
+    hook="$1"
+    priority="$2"
+    printf '    chain %s_guard {\n' "$hook"
+    printf '        type filter hook %s priority %s; policy accept;\n' \
+        "$hook" "$priority"
+    if [ -n "$RO_SANDBOX_IFACES" ] && [ "$hook" = "forward" ]; then
+        printf '        iifname { %s } ip saddr != @ro_sandbox %s\n' \
+            "$(iface_set)" "$(drop_verdict)"
+        printf '        iifname { %s } meta nfproto ipv6 %s\n' \
+            "$(iface_set)" "$(drop_verdict)"
+    fi
+    printf '        ip saddr @ro_sandbox jump sandbox_egress\n'
+    printf '        ip6 saddr @ro_sandbox6 jump sandbox_egress\n'
+    printf '    }\n'
+}
+
+emit_set() {
+    set_name="$1"
+    set_type="$2"
+    set_elements="$3"
+    printf '    set %s {\n' "$set_name"
+    printf '        type %s\n' "$set_type"
+    printf '        flags interval\n'
+    printf '        auto-merge\n'
+    if [ -n "$set_elements" ]; then
+        printf '        elements = { %s }\n' "${set_elements%, }"
+    fi
+    printf '    }\n'
+}
+
+emit_ruleset() {
+    sandbox_elements=$(csv_to_elements "$RO_SANDBOX_CIDRS")
+    [ -n "$sandbox_elements" ] || die "RO_SANDBOX_CIDRS produced no usable ranges"
+    printf 'table inet %s {\n' "$RO_TABLE"
+    emit_set ro_sandbox ipv4_addr "$sandbox_elements"
+    printf '\n'
+    emit_set ro_sandbox6 ipv6_addr "$(csv_to_elements "$RO_SANDBOX_CIDRS6")"
+
+    if [ -n "$RO_ALLOW_CIDRS" ]; then
+        allow_elements=$(csv_to_elements "$RO_ALLOW_CIDRS")
+        printf '\n'
+        emit_set ro_allowed ipv4_addr "$allow_elements"
+    fi
+
+    printf '\n'
+    emit_sandbox_chain
+    printf '\n'
+
+    case "$RO_HOOK" in
+        forward) emit_hook_chain forward 0 ;;
+        output) emit_hook_chain output 0 ;;
+        both)
+            emit_hook_chain forward 0
+            printf '\n'
+            emit_hook_chain output 0
+            ;;
+    esac
+
+    printf '}\n'
+
+    if [ "$RO_TRANSPARENT" = "true" ] || [ "$RO_DNS_REDIRECT" = "true" ]; then
+        sandbox_elements=$(csv_to_elements "$RO_SANDBOX_CIDRS")
+        printf '\ntable ip %s_nat {\n' "$RO_TABLE"
+        emit_set ro_sandbox ipv4_addr "$sandbox_elements"
+        printf '\n    chain prerouting {\n'
+        printf '        type nat hook prerouting priority dstnat; policy accept;\n'
+        if [ "$RO_DNS_REDIRECT" = "true" ]; then
+            printf '        ip saddr @ro_sandbox udp dport 53 counter dnat to %s:%s\n' \
+                "$RO_GATEWAY_ADDR" "$RO_DNS_PORT"
+            printf '        ip saddr @ro_sandbox tcp dport 53 counter dnat to %s:%s\n' \
+                "$RO_GATEWAY_ADDR" "$RO_DNS_PORT"
+        fi
+        if [ "$RO_TRANSPARENT" = "true" ]; then
+            printf '        ip saddr @ro_sandbox ip daddr %s return\n' "$RO_GATEWAY_ADDR"
+            printf '        ip saddr @ro_sandbox tcp dport 80 counter dnat to %s:%s\n' \
+                "$RO_GATEWAY_ADDR" "$RO_TRANSPARENT_HTTP_PORT"
+            printf '        ip saddr @ro_sandbox tcp dport 443 counter dnat to %s:%s\n' \
+                "$RO_GATEWAY_ADDR" "$RO_TRANSPARENT_TLS_PORT"
+        fi
+        printf '    }\n}\n'
+    fi
+}
+
+bootstrap_deny() {
+    [ "$RO_BOOTSTRAP_DENY" = "true" ] || return 0
+    [ -n "$RO_SANDBOX_CIDRS" ] || return 0
+    if table_present; then
+        return 0
+    fi
+    _boot_v4=$(csv_to_elements "$RO_SANDBOX_CIDRS" | tr -d '\n')
+    _boot_v4=${_boot_v4%, }
+    [ -n "$_boot_v4" ] || return 0
+    {
+        printf 'table inet %s_boot\n' "$RO_TABLE"
+        printf 'delete table inet %s_boot\n' "$RO_TABLE"
+        printf 'table inet %s_boot {\n' "$RO_TABLE"
+        printf '    set boot_sandbox {\n'
+        printf '        type ipv4_addr\n        flags interval\n'
+        printf '        elements = { %s }\n    }\n' "$_boot_v4"
+        printf '    chain boot_forward {\n'
+        printf '        type filter hook forward priority -10; policy accept;\n'
+        printf '        ip saddr @boot_sandbox counter drop\n    }\n'
+        printf '    chain boot_output {\n'
+        printf '        type filter hook output priority -10; policy accept;\n'
+        printf '        ip saddr @boot_sandbox counter drop\n    }\n'
+        printf '}\n'
+    } | "$RO_NFT" -f - 2>/dev/null || {
+        log warn "could not install the fail-closed bootstrap ruleset; a startup failure would leave sandbox egress unrestricted"
+        return 0
+    }
+    log info "installed a fail-closed bootstrap ruleset; sandbox egress is denied until the full ruleset applies"
+}
+
+remove_bootstrap_deny() {
+    "$RO_NFT" delete table inet "${RO_TABLE}_boot" 2>/dev/null || true
+}
+
+apply_ruleset() {
+    ruleset=$(emit_ruleset)
+    {
+        printf 'table inet %s\n' "$RO_TABLE"
+        printf 'delete table inet %s\n' "$RO_TABLE"
+        if [ "$RO_TRANSPARENT" = "true" ] || [ "$RO_DNS_REDIRECT" = "true" ]; then
+            printf 'table ip %s_nat\n' "$RO_TABLE"
+            printf 'delete table ip %s_nat\n' "$RO_TABLE"
+        fi
+        printf '%s\n' "$ruleset"
+    } | "$RO_NFT" -f - || die "failed to apply the nftables ruleset"
+    remove_bootstrap_deny
+    flush_sandbox_conntrack
+}
+
+flush_sandbox_conntrack() {
+    [ "$RO_FLUSH_CONNTRACK" = "true" ] || return 0
+    if ! command -v conntrack >/dev/null 2>&1; then
+        log warn "conntrack is not installed, so connections opened before this ruleset was applied keep flowing until they close; install conntrack or set RO_FLUSH_CONNTRACK=false to silence this"
+        return 0
+    fi
+    _old_ifs="$IFS"
+    IFS=','
+    for _cidr in $RO_SANDBOX_CIDRS $RO_SANDBOX_CIDRS6; do
+        _cidr=$(printf '%s' "$_cidr" | tr -d '[:space:]')
+        [ -z "$_cidr" ] && continue
+        conntrack -D -s "$_cidr" >/dev/null 2>&1 || true
+    done
+    IFS="$_old_ifs"
+    log info "cleared conntrack entries for the sandbox ranges"
+}
+
+check_ruleset() {
+    emit_ruleset | "$RO_NFT" -c -f - \
+        || die "the generated nftables ruleset is not valid"
+    log info "nftables ruleset is valid"
+}
+
+flush_ruleset() {
+    remove_bootstrap_deny
+    "$RO_NFT" delete table inet "$RO_TABLE" 2>/dev/null || true
+    "$RO_NFT" delete table ip "${RO_TABLE}_nat" 2>/dev/null || true
+    log warn "sandbox egress enforcement removed"
+}
+
+table_present() {
+    "$RO_NFT" list table inet "$RO_TABLE" >/dev/null 2>&1
+}
+
+status_ruleset() {
+    if table_present; then
+        "$RO_NFT" list table inet "$RO_TABLE"
+        exit 0
+    fi
+    log error "enforcement table is absent"
+    exit 1
+}
+
+run_loop() {
+    bootstrap_deny
+    preflight
+    check_rp_filter
+    apply_ruleset
+    log info "sandbox egress enforcement active"
+
+    trap 'log warn "received termination signal"; exit 0' INT TERM
+
+    while true; do
+        sleep "$RO_RECONCILE_SECONDS"
+        if ! table_present; then
+            log warn "enforcement table disappeared; reapplying"
+            apply_ruleset
+        fi
+    done
+}
+
+usage() {
+    cat <<'EOF'
+ro-agent - node-level egress enforcement for Rokh Oghab
+
+Usage: ro-agent <command>
+
+Commands:
+  run      apply the ruleset and keep reconciling it (default)
+  apply    apply the ruleset once and exit
+  print    write the generated ruleset to stdout
+  check    validate the generated ruleset without applying it
+  status   print the live ruleset, exiting non-zero if it is missing
+  flush    remove the ruleset
+
+Environment:
+  RO_GATEWAY_ADDR           gateway address sandboxes are allowed to reach
+  RO_PROXY_PORT             gateway proxy port (default 3128)
+  RO_DNS_PORT               gateway DNS port (default 5353)
+  RO_SANDBOX_CIDRS          comma-separated sandbox source ranges
+  RO_ALLOW_CIDRS            comma-separated destinations exempt from the proxy
+  RO_TRANSPARENT            redirect plain 80/443 into the gateway
+  RO_DNS_REDIRECT           redirect port 53 into the gateway resolver
+  RO_SANDBOX_IFACES         sandbox interface patterns, used to reject packets
+                            that arrive from a sandbox with a forged source
+  RO_ENFORCE_RP_FILTER      enable reverse path filtering (default true)
+  RO_HOOK                   forward, output or both (default forward)
+  RO_MATCH_PRE_DNAT         also accept the gateway address as the workload
+                            asked for it, before any dnat rewrote it, which is
+                            what a Kubernetes Service ClusterIP needs
+                            (default true)
+  RO_BLOCK_IPV6             drop IPv6 egress from sandboxes (default true)
+  RO_LOG_DROPS              log dropped packets (default false)
+  RO_RECONCILE_SECONDS      reconciliation interval (default 15)
+EOF
+}
+
+command="${1:-run}"
+case "$command" in
+    run) run_loop ;;
+    apply) bootstrap_deny; preflight; check_rp_filter; apply_ruleset; log info "ruleset applied" ;;
+    print) preflight; emit_ruleset ;;
+    check) preflight; check_ruleset ;;
+    status) status_ruleset ;;
+    flush) flush_ruleset ;;
+    -h|--help|help) usage ;;
+    *) usage; exit 2 ;;
+esac
