@@ -1,0 +1,57 @@
+apiVersion: rokhoghab.io/v1
+kind: EgressPolicy
+metadata:
+  name: agent-sandbox
+  tier: profile
+  priority: 40
+spec:
+  defaultAction: deny
+  selector:
+    profiles:
+      - agent-sandbox
+  rules:
+    - name: model-api
+      action: allow
+      destinations:
+        hostnames:
+          - api.anthropic.com
+      ports: [443]
+      protocols: [https]
+      rateLimit:
+        requestsPerSecond: 10
+        burst: 20
+      connections:
+        max: 16
+      requestSize: 16M
+      responseSize: 64M
+      tls:
+        minVersion: "1.3"
+        requireSni: true
+
+    - name: documentation-read
+      action: allow
+      destinations:
+        hostnames:
+          - docs.python.org
+          - developer.mozilla.org
+      ports: [443]
+      protocols: [https]
+      rateLimit:
+        requestsPerSecond: 5
+      responseSize: 16M
+      tls:
+        minVersion: "1.2"
+        requireSni: true
+
+    - name: deny-anything-that-looks-like-a-webhook
+      action: deny
+      destinations:
+        hostnameSuffixes:
+          - webhook.site
+          - requestbin.net
+          - ngrok.io
+          - ngrok-free.app
+          - trycloudflare.com
+          - localtunnel.me
+          - serveo.net
+          - pipedream.net

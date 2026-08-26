@@ -1,0 +1,84 @@
+apiVersion: rokhoghab.io/v1
+kind: EgressPolicy
+metadata:
+  name: ci-runner
+  tier: profile
+  priority: 20
+spec:
+  defaultAction: deny
+  selector:
+    profiles:
+      - ci-runner
+    namespaces:
+      - execution
+  rules:
+    - name: source-control
+      action: allow
+      destinations:
+        hostnames:
+          - github.com
+          - codeload.github.com
+        hostnameSuffixes:
+          - githubusercontent.com
+      ports: [443]
+      protocols: [https]
+      rateLimit:
+        requestsPerSecond: 30
+      bandwidth:
+        bytesPerSecond: 50M
+      tls:
+        minVersion: "1.2"
+        requireSni: true
+
+    - name: package-registries
+      action: allow
+      destinations:
+        hostnames:
+          - pypi.org
+          - registry.npmjs.org
+          - proxy.golang.org
+          - crates.io
+        hostnameSuffixes:
+          - pythonhosted.org
+          - crates.io
+      ports: [443]
+      protocols: [https]
+      rateLimit:
+        requestsPerSecond: 60
+        burst: 120
+      tls:
+        minVersion: "1.2"
+        requireSni: true
+
+    - name: internal-artefact-mirror
+      action: allow
+      destinations:
+        hostnames:
+          - mirror.internal.example.com
+        resolvedCidrs:
+          - 10.20.0.0/16
+      ports: [443, 8443]
+      protocols: [https]
+      connections:
+        max: 64
+      bandwidth:
+        bytesPerSecond: 100M
+      responseSize: 2G
+
+    - name: container-registry-read-endpoint
+      action: allow
+      destinations:
+        hostnames:
+          - registry.internal.example.com
+        resolvedCidrs:
+          - 10.20.0.0/16
+      ports: [443]
+      protocols: [https]
+
+    - name: deny-container-registry-write-endpoint
+      action: deny
+      destinations:
+        hostnames:
+          - push.registry.internal.example.com
+      ports: [443]
+      protocols: [https]

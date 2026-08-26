@@ -1,0 +1,45 @@
+apiVersion: rokhoghab.io/v1
+kind: EgressPolicy
+metadata:
+  name: transparent-sandbox
+  tier: namespace
+  priority: 5
+spec:
+  defaultAction: deny
+  selector:
+    namespaces:
+      - execution
+  rules:
+    - name: internal-api-over-a-custom-port
+      action: allow
+      destinations:
+        hostnames:
+          - api.internal.example.com
+        resolvedCidrs:
+          - 10.40.0.0/16
+      ports: [8443, 9443, "10000-10010"]
+      protocols: [https]
+      tls:
+        minVersion: "1.2"
+        requireSni: true
+
+    - name: plaintext-service-on-a-custom-port
+      action: allow
+      destinations:
+        cidrs:
+          - 10.41.0.0/24
+      ports: [8080, 8081]
+      protocols: [http]
+      methods: [GET, POST]
+      paths:
+        - "/api/v1/**"
+
+    - name: opaque-tcp-to-a-database-replica
+      action: allow
+      destinations:
+        cidrs:
+          - 10.42.7.10/32
+      ports: [5432]
+      protocols: [tcp]
+      connections:
+        max: 8

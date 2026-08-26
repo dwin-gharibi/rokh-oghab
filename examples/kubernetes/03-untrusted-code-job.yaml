@@ -1,0 +1,94 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: untrusted-code-run
+  namespace: execution
+  labels:
+    app.kubernetes.io/name: untrusted-code-run
+    app.kubernetes.io/part-of: rokh-oghab
+    rokhoghab.io/profile: untrusted-python
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: untrusted-code-run
+        rokhoghab.io/profile: untrusted-python
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: run
+          image: python:3.12-alpine
+          command: ["python", "/code/main.py"]
+          envFrom:
+            - configMapRef:
+                name: sandbox-egress-env
+          env:
+            - name: RO_PROXY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: sandbox-egress
+                  key: token
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          volumeMounts:
+            - name: code
+              mountPath: /code
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: code
+          configMap:
+            name: untrusted-code
+        - name: tmp
+          emptyDir:
+            sizeLimit: 512Mi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: untrusted-code
+  namespace: execution
+data:
+  main.py: |
+    import os
+    import socket
+    import urllib.request
+
+    PROXY = os.environ["HTTPS_PROXY"]
+    TOKEN = os.environ["RO_PROXY_TOKEN"]
+
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({"http": PROXY, "https": PROXY}))
+    opener.addheaders = [("Proxy-Authorization", "Bearer " + TOKEN)]
+
+    with opener.open("https://pypi.org/simple/", timeout=20) as response:
+        print("package index reachable:", response.status)
+
+    try:
+        socket.create_connection(("1.1.1.1", 443), timeout=5).close()
+        raise SystemExit("the sandbox reached the network directly")
+    except OSError as exc:
+        print("direct egress refused:", exc)

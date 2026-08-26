@@ -1,0 +1,16 @@
+apiVersion: rokhoghab.io/v1
+kind: EgressPolicy
+metadata:
+  name: global-baseline
+  tier: global
+  priority: 0
+spec:
+  defaultAction: deny
+  rules:
+    - name: deny-cloud-metadata
+      action: deny
+      destinations:
+        cidrs:
+          - 169.254.0.0/16
+          - 100.100.100.200/32
+          - 192.0.0.192/32

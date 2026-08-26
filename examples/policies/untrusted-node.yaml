@@ -1,0 +1,41 @@
+apiVersion: rokhoghab.io/v1
+kind: EgressPolicy
+metadata:
+  name: untrusted-node
+  tier: profile
+  priority: 10
+spec:
+  defaultAction: deny
+  selector:
+    profiles:
+      - untrusted-node
+  rules:
+    - name: npm-registry
+      action: allow
+      destinations:
+        hostnames:
+          - registry.npmjs.org
+        hostnameSuffixes:
+          - npmjs.org
+          - npmjs.com
+      ports: [443]
+      protocols: [https]
+      rateLimit:
+        requestsPerSecond: 40
+        burst: 80
+      connections:
+        max: 32
+      bandwidth:
+        bytesPerSecond: 20M
+      responseSize: 256M
+      tls:
+        minVersion: "1.2"
+        requireSni: true
+
+    - name: deny-npm-publish-endpoint
+      action: deny
+      destinations:
+        hostnames:
+          - registry.npmjs.org
+      ports: [443]
+      protocols: [https]

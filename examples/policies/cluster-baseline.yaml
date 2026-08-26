@@ -1,0 +1,42 @@
+apiVersion: rokhoghab.io/v1
+kind: EgressPolicy
+metadata:
+  name: cluster-baseline
+  tier: cluster
+  priority: 1
+spec:
+  defaultAction: deny
+  rules:
+    - name: deny-cluster-internal-ranges
+      action: deny
+      destinations:
+        cidrs:
+          - 10.96.0.0/12
+          - 10.244.0.0/16
+
+    - name: deny-the-kubernetes-api
+      action: deny
+      destinations:
+        cidrs:
+          - 10.96.0.1/32
+        hostnames:
+          - kubernetes.default.svc.cluster.local
+
+    - name: deny-known-exfiltration-endpoints
+      action: deny
+      destinations:
+        hostnameSuffixes:
+          - pastebin.com
+          - transfer.sh
+          - file.io
+          - anonfiles.com
+          - gofile.io
+
+    - name: deny-dns-over-https-resolvers
+      action: deny
+      destinations:
+        hostnames:
+          - dns.google
+          - cloudflare-dns.com
+          - dns.quad9.net
+          - doh.opendns.com

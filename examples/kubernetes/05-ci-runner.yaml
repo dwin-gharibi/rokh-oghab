@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ci-runner
+  namespace: execution
+automountServiceAccountToken: false
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: build-job
+  namespace: execution
+  labels:
+    app.kubernetes.io/part-of: rokh-oghab
+    rokhoghab.io/profile: ci-runner
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 3600
+  template:
+    metadata:
+      labels:
+        rokhoghab.io/profile: ci-runner
+    spec:
+      restartPolicy: Never
+      serviceAccountName: ci-runner
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: build
+          image: python:3.12-alpine
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              pip install --no-cache-dir \
+                --proxy "http://ro:$RO_PROXY_TOKEN@rokh-oghab-gateway.rokh-oghab.svc.cluster.local:3128" \
+                requests
+              python -c 'import requests; print(requests.__version__)'
+          env:
+            - name: RO_PROXY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: ci-runner-egress
+                  key: token
+            - name: PIP_DISABLE_PIP_VERSION_CHECK
+              value: "1"
+            - name: HOME
+              value: /workspace
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "4"
+              memory: 4Gi
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: workspace
+          emptyDir:
+            sizeLimit: 8Gi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi

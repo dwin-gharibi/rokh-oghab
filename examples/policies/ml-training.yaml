@@ -1,0 +1,77 @@
+apiVersion: rokhoghab.io/v1
+kind: EgressPolicy
+metadata:
+  name: ml-training
+  tier: profile
+  priority: 30
+spec:
+  defaultAction: deny
+  selector:
+    profiles:
+      - ml-training
+  rules:
+    - name: model-hub-read
+      action: allow
+      destinations:
+        hostnames:
+          - huggingface.co
+        hostnameSuffixes:
+          - hf.co
+      ports: [443]
+      protocols: [https]
+      rateLimit:
+        requestsPerSecond: 20
+      connections:
+        max: 24
+      bandwidth:
+        bytesPerSecond: 200M
+      responseSize: 8G
+      tls:
+        minVersion: "1.2"
+        requireSni: true
+
+    - name: object-storage-read
+      action: allow
+      destinations:
+        hostnames:
+          - datasets.internal.example.com
+        resolvedCidrs:
+          - 10.30.0.0/16
+      ports: [443]
+      protocols: [https]
+      bandwidth:
+        bytesPerSecond: 500M
+
+    - name: checkpoint-write
+      action: allow
+      destinations:
+        hostnames:
+          - checkpoints.internal.example.com
+        resolvedCidrs:
+          - 10.30.0.0/16
+      ports: [443]
+      protocols: [https]
+      requestSize: 32G
+      bandwidth:
+        bytesPerSecond: 500M
+
+    - name: deny-public-model-hub-upload-endpoint
+      action: deny
+      destinations:
+        hostnames:
+          - hub-ci.huggingface.co
+      ports: [443]
+      protocols: [https]
+
+    - name: internal-metrics-over-plaintext
+      action: allow
+      destinations:
+        hostnames:
+          - metrics.internal.example.com
+        resolvedCidrs:
+          - 10.30.0.0/16
+      ports: [8080]
+      protocols: [http]
+      methods: [POST]
+      paths:
+        - "/api/v1/runs/**"
