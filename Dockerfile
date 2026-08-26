@@ -2,6 +2,8 @@ ARG OPENRESTY_VERSION=1.27.1.2-0-alpine-fat
 ARG ALPINE_VERSION=3.21
 
 FROM openresty/openresty:${OPENRESTY_VERSION} AS runtime-base
+RUN apk --no-cache upgrade \
+    && rm -rf /var/cache/apk/*
 RUN addgroup -g 65532 -S rokh \
     && adduser -u 65532 -S -G rokh -h /nonexistent -s /sbin/nologin rokh \
     && mkdir -p /run/rokh-oghab /etc/rokh-oghab \
@@ -34,7 +36,8 @@ ARG EXTRA_CA_CERT=""
 RUN if [ -n "$EXTRA_CA_CERT" ]; then \
         printf '%s' "$EXTRA_CA_CERT" > /usr/local/share/ca-certificates/extra.crt; \
     fi
-RUN apk add --no-cache nftables iproute2 ca-certificates \
+RUN apk --no-cache upgrade \
+    && apk add --no-cache nftables iproute2 ca-certificates \
     && (update-ca-certificates 2>/dev/null || true) \
     && rm -rf /var/cache/apk/*
 COPY bin/ro-agent /usr/local/bin/ro-agent

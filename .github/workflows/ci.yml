@@ -23,6 +23,11 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
+      - name: Build the images the configuration checks need
+        run: |
+          docker build --target gateway    -t rokh-oghab/gateway:dev .
+          docker build --target controller -t rokh-oghab/controller:dev .
+
       - name: Byte-compile every Lua module
         run: bash tests/lint.sh
         env:
