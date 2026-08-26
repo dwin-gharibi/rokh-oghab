@@ -292,6 +292,70 @@ Do not set `pollSeconds` anywhere near `maxStalenessSeconds`. The gateway needs 
 chances to refresh before it decides it has gone stale; a poll interval close to
 the staleness budget turns one transient failure into an outage.
 
+### Signing the policy bundle
+
+Give the controller and its gateways one shared key so a gateway can prove the
+bundle it fetched is the one the controller published. The controller signs
+with HMAC-SHA256; the gateway verifies before it adopts.
+
+Controller:
+
+```bash
+RO_CONTROLLER_BUNDLE_SIGNING_KEY=<32+ random bytes>
+```
+
+Gateway:
+
+```json
+{
+  "controller": {
+    "url": "http://ro-controller:8081",
+    "token": "...",
+    "signingKey": "<the same value>",
+    "requireSignature": true
+  }
+}
+```
+
+Or by environment: `RO_CONTROLLER_SIGNING_KEY` and
+`RO_CONTROLLER_REQUIRE_SIGNATURE=true`. With `requireSignature` set, a gateway
+refuses any bundle that is unsigned or wrongly signed and keeps its last good
+one until it goes stale, so a tampered or impersonated controller cannot widen
+the boundary. The key must be at least sixteen characters; the gateway refuses
+to start with a shorter one.
+
+The Helm chart wires this for you: it generates a `bundleSigning` value into
+the token secret and sets both sides from it, gated by `controller.signBundles`
+and `controller.requireSignature`. When you supply your own secret through
+`tokens.existingSecret`, add a `bundleSigning` key to it.
+
+**Rotating the key.** A gateway verifies against `controller.signingKey` and
+against every key in `controller.acceptSigningKeys`, which exists so a rotation
+never leaves a gateway unable to adopt policy. Rotate in three steps, each of
+which is safe to sit in:
+
+1. Add the new key to `acceptSigningKeys` on every gateway and restart them.
+   They still verify the old signature and now also accept the new one.
+2. Move the controller to the new key. Gateways accept it immediately.
+3. Promote the new key to `signingKey` on the gateways and drop
+   `acceptSigningKeys`.
+
+Do not skip to step 2. A gateway that holds only the old key stops adopting new
+bundles the moment the controller switches — it keeps enforcing its last good
+policy, so nothing opens up, but revocations and emergency deny stop reaching
+it until you finish the rotation. Watch
+`ro_policy_reload_failures_total{reason="signature"}` and alert on it: outside a
+rotation it means someone is serving bundles the controller did not sign.
+
+### Encrypting the control channel
+
+Signing protects integrity even over cleartext HTTP. To add confidentiality,
+point `controller.url` at an `https://` endpoint — a mesh sidecar, an ingress,
+or a controller behind TLS. The gateway verifies the peer certificate against
+the node's trust store and fails the fetch closed if it does not verify; set
+`controller.tlsServerName` when the certificate name differs from the URL host,
+and only disable `controller.tlsVerify` in a lab.
+
 ---
 
 ## Failure modes

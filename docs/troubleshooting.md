@@ -577,6 +577,18 @@ max(roc_active_version) - min(ro_policy_version)
 
 If one gateway lags, look at its `ro_policy_reload_failures_total{reason=...}`.
 
+`reason="signature"` means the gateway fetched a bundle whose HMAC did not
+verify against its `controller.signingKey`, so it refused to adopt it and kept
+the last good one. Either the controller and that gateway hold different keys —
+check a rotation that reached only one side — or something on the network path
+altered the response. The gateway logs `controller bundle signature did not
+verify; refusing to adopt it` with each attempt.
+
+`reason="fetch"` with `no resolver defined to resolve` in the gateway log means
+the gateway cannot resolve the controller's hostname. The stream block reads
+`/etc/resolv.conf` through `resolver local=on`; if the pod has no usable
+resolver configuration, point `controller.url` at an address instead of a name.
+
 ### It works from one pod and not another
 
 The two pods have different identities. Compare:

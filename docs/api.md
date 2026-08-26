@@ -129,7 +129,21 @@ validated bundle with its version and digest:
 ```
 
 Gateways compare the digest against what they are running and adopt only when
-it differs, so a poll costs one comparison in the common case.
+it differs, so a poll costs one comparison in the common case. The digest
+detects change; it does not prove origin.
+
+When the controller is given a bundle signing key it also returns
+
+```
+X-RO-Bundle-Signature: sha256=<hmac>
+```
+
+an HMAC-SHA256 over the exact response body, under the key it shares with its
+gateways. A gateway holding the same key recomputes the HMAC over the bytes it
+received and adopts the bundle only on a constant-time match; with
+`controller.requireSignature` set it refuses an unsigned or wrongly signed
+bundle outright, so tampering on the network path cannot change policy. See
+[operations](operations.md#signing-the-policy-bundle).
 
 ### State
 

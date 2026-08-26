@@ -46,6 +46,8 @@ Rokh Oghab is responsible for all of these.
 | Spoofing identity with headers | Headers honoured only from trusted sources |
 | One tenant exhausting egress for others | Per-identity rate, connection and bandwidth limits |
 | Reaching the gateway's own admin API | Address guard, NetworkPolicy and node rules |
+| Tampering with policy in flight from the controller | HMAC-SHA256 signing over the bundle, verified by the gateway before it adopts |
+| Impersonating the controller to a gateway | The gateway adopts only a bundle signed with the shared key; set `controller.requireSignature` to refuse anything unsigned |
 | Turning off enforcement | Pod Security, capability drops and agent reconciliation |
 
 ## Out of scope
@@ -57,7 +59,7 @@ saying so.
 | --- | --- |
 | Container escape | If the workload breaks the container it is on the node, outside this boundary. Use a hardened runtime such as gVisor or Kata, and keep the node patched |
 | A compromised node | An attacker with root on the node can flush nftables. Node integrity is a prerequisite |
-| A compromised control plane | Whoever holds an operator token can publish permissive policy. Protect those tokens and watch the audit trail |
+| A compromised control plane | Whoever holds an operator token, or the bundle signing key, can publish or forge permissive policy. Signing stops a network attacker who has neither, but not an attacker who holds the key. Protect the signing key as you protect the tokens, rotate it, and watch the audit trail |
 | Data leaving through a permitted destination | If policy allows a destination, data may leave through it. Narrow the allow list; consider TLS inspection where you can accept its cost |
 | Covert channels through timing or volume | Not addressed. Bandwidth limits reduce throughput but do not eliminate the channel |
 | Malicious content coming back | This is an egress boundary, not a content scanner |
@@ -85,6 +87,19 @@ that every sandbox trusts, which is a large piece of attack surface to add.
 **IPv6 is dropped at the node by default.** That is the safe choice, but it
 means an IPv6-only destination is unreachable until you deliberately enable it
 and review the guard's IPv6 ranges.
+
+**The node rules assume packets traverse netfilter.** An eBPF dataplane that
+redirects pod traffic before the `forward` hook can skip the node rules
+entirely. Run `RO_HOOK=both` and a CNI-native egress policy on such a
+dataplane, and confirm with `sudo make test-bypass` on the real node image
+before trusting the boundary. See the [security model](security-model.md) for
+which dataplanes are affected.
+
+**The bundle signing key is a shared secret.** Every gateway holds it, so a
+gateway that is itself compromised could mint a bundle. Signing defends the
+path between an honest controller and an honest gateway; it does not make a
+gateway trustworthy on its own. Keep the key in a secret store, rotate it, and
+scope who can read it.
 
 ## How to report a bypass
 

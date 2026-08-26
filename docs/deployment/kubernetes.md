@@ -215,3 +215,25 @@ DaemonSet will not start and you are relying on NetworkPolicy alone.
 **Pod Security `restricted` is what stops a workload asking for host network.**
 Without it a tenant can request `hostNetwork: true` and step outside the pod
 CIDR the agent confines.
+
+**An eBPF dataplane can bypass the node's `forward` hook.** The agent's rules
+run in netfilter's `forward` hook, which sees a pod's egress on veth-plus-bridge
+and routed dataplanes (Calico, Flannel, kindnet, the AWS VPC CNI in its usual
+modes). Cilium with `bpf.hostRouting` or kube-proxy replacement can redirect
+veth-to-NIC in eBPF before netfilter runs, so the `forward` hook never sees the
+packet. On such a dataplane:
+
+- set `agent.hook: both` (`RO_HOOK=both`) so the `output` hook covers
+  host-routed paths as well,
+- add a Cilium-native egress policy that mirrors "only the gateway" for the
+  sandbox pods, and
+- prove it end to end with `sudo make test-bypass` against your real node image
+  and CNI before you trust the boundary.
+
+Do not treat the `forward` hook as sufficient on an eBPF dataplane until the
+bypass suite passes on it.
+
+**Sign the policy bundle.** A gateway enforces whatever bundle it fetches, so
+give the controller and gateways a shared signing key and set
+`controller.requireSignature`. The chart wires this from a generated
+`bundleSigning` secret; see [operations](../operations.md#signing-the-policy-bundle).

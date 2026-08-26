@@ -58,8 +58,19 @@ source is not in the sandbox set. Set it if your workloads can hold `NET_RAW`;
 the shipped `restricted` Pod Security level forbids that capability, which is
 the other half of this defence.
 
-This layer does not depend on the CNI, so it holds even if a NetworkPolicy is
-deleted or the CNI misbehaves.
+This layer holds even if a NetworkPolicy is deleted or the CNI misbehaves,
+with one dataplane caveat. The rules live in the netfilter `forward` hook, so
+they see a packet only if the packet traverses netfilter on its way off the
+node. That is true for veth-plus-bridge and routed dataplanes — Calico,
+Flannel, kindnet, the AWS VPC CNI in its usual modes. It is **not**
+automatically true for an eBPF dataplane that redirects a pod's traffic in the
+TC or XDP layer before netfilter runs: Cilium with `bpf.hostRouting` or
+kube-proxy replacement can steer veth-to-NIC in eBPF and skip the `forward`
+hook. On such a dataplane, run the agent with `RO_HOOK=both` so the `output`
+hook covers host-routed paths as well, add a Cilium-native egress policy that
+mirrors the boundary, and prove it with `sudo make test-bypass` on the actual
+node image before you trust it. Do not assume the `forward` hook is enough
+until the bypass suite confirms it on your CNI.
 
 ### Layer 4 — the gateway
 
@@ -69,6 +80,29 @@ Identity, destination, protocol and policy. Described in detail below.
 
 Strict parsing, SNI bound to the tunnel authority, TLS version floors, redirect
 evaluation, response framing validation. Described in detail below.
+
+### Layer 6 — the control plane
+
+A gateway that fetched a forged policy would enforce it faithfully, so the
+bundle it adopts has to be provably the one the controller published. The
+controller signs every bundle it serves with HMAC-SHA256 over the exact bytes
+on the wire, under a key it shares only with its gateways, and sends the digest
+in the `X-RO-Bundle-Signature` header. A gateway configured with that key
+recomputes the HMAC over the bytes it received and adopts the bundle only if
+the two match, comparing in constant time. Set `controller.requireSignature`
+so a gateway refuses to adopt any bundle that is unsigned or wrongly signed —
+including one injected by whoever sits on the network path — rather than
+trusting the transport.
+
+Signing gives integrity independent of transport, which is what matters: a
+network attacker between controller and gateway cannot forge a bundle without
+the key even over cleartext HTTP. Point `controller.url` at an `https://`
+endpoint to add confidentiality on top; the gateway verifies the peer
+certificate against the trust store the node provides and fails closed if the
+handshake does not verify.
+
+This layer stops a tampered or impersonated control plane from widening the
+boundary.
 
 ## What each attack runs into
 
@@ -168,6 +202,9 @@ goes. The audit trail records decisions, not credentials.
 | No identity | deny |
 | A token that does not validate | deny, without falling back |
 | No policy bundle loaded | deny |
+| A bundle whose signature does not verify, when a signing key is set | deny, without adopting it |
+| An unsigned bundle, when `controller.requireSignature` is set | deny, without adopting it |
+| An `https` control-plane peer whose certificate does not verify | deny the fetch, keep the last good bundle until it goes stale |
 | The bundle is older than its staleness limit and a controller is configured | deny |
 | A destination that cannot be classified | deny |
 | A response the gateway cannot frame unambiguously | deny |
@@ -190,6 +227,9 @@ allow list.
 | A tunnel cannot be repurposed by SNI | `make test-security` |
 | Keep-alive re-evaluates every request | `make test-e2e` |
 | A revoked token stops working after a publish | `make test-control` |
+| The controller signs the served bundle byte-for-byte | `make test-control` |
+| A gateway adopts only a bundle whose signature verifies | `make test-control` |
+| HMAC-SHA256 matches the published standard vectors | `make test-unit` |
 | A gateway that loses its controller keeps enforcing | `make test-control` |
 | A sandbox cannot reach anything but the gateway | `sudo make test-bypass` |
 | Forged source addresses never arrive | `sudo make test-bypass` |
