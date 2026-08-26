@@ -1,0 +1,13 @@
+# Test counts that must never decrease.
+# Regenerate with: bash tests/run-ratchet.sh --update
+unit=453
+unit_files=22
+e2e=68
+security=98
+control=29
+cli=10
+agent=41
+enforcement=13
+bypass=13
+defaults=66
+examples=8

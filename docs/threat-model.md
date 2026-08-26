@@ -88,6 +88,14 @@ that every sandbox trusts, which is a large piece of attack surface to add.
 means an IPv6-only destination is unreachable until you deliberately enable it
 and review the guard's IPv6 ranges.
 
+**Sandboxes sharing a bridge need `br_netfilter`.** Traffic between two
+workloads on one Linux bridge is switched, not routed, so it reaches the node
+rules only when `net.bridge.bridge-nf-call-iptables` is `1`. At `0` the node
+still blocks everything routed off the box, so the boundary looks intact while
+a sandbox freely reaches its neighbours and the gateway's admin port. The agent
+sets the sysctl where it can and warns where it cannot; load `br_netfilter` on
+the node so it has something to set.
+
 **The node rules assume packets traverse netfilter.** An eBPF dataplane that
 redirects pod traffic before the `forward` hook can skip the node rules
 entirely. Run `RO_HOOK=both` and a CNI-native egress policy on such a

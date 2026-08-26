@@ -253,7 +253,7 @@ if command -v helm >/dev/null 2>&1; then
     rendered="$(helm template ro deploy/helm/rokh-oghab 2>/dev/null)"
     check_rendered() {
         local pattern="$1" label="$2"
-        if printf '%s' "$rendered" | grep -q -- "$pattern"; then
+        if grep -q -- "$pattern" <<<"$rendered"; then
             ok "$label"
         else
             bad "$label" "expected to find: $pattern"
@@ -261,7 +261,7 @@ if command -v helm >/dev/null 2>&1; then
     }
     check_absent_rendered() {
         local pattern="$1" label="$2"
-        if printf '%s' "$rendered" | grep -q -- "$pattern"; then
+        if grep -q -- "$pattern" <<<"$rendered"; then
             bad "$label" "unexpectedly found: $pattern"
         else
             ok "$label"
@@ -310,6 +310,11 @@ else
 fi
 
 printf '\n  the gateway can reach and trust its control plane\n'
+
+grep_present 'bridge-nf-call-iptables' bin/ro-agent \
+    "the agent notices when bridged sandbox traffic would bypass the ruleset"
+grep_present 'RO_ENFORCE_BRIDGE_NF:-true' bin/ro-agent \
+    "bridge netfilter is enforced unless an operator turns it off"
 
 grep_present '^\s*resolver local=on' nginx.conf \
     "the stream block resolves names, so a controller url may be a hostname"

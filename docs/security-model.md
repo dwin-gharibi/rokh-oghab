@@ -58,8 +58,20 @@ source is not in the sandbox set. Set it if your workloads can hold `NET_RAW`;
 the shipped `restricted` Pod Security level forbids that capability, which is
 the other half of this defence.
 
+There is a second, sharper dataplane condition, and it is not theoretical: when
+sandboxes share a Linux bridge, their traffic to each other is **bridged, not
+routed**, so it reaches netfilter only if `br_netfilter` is loaded and
+`net.bridge.bridge-nf-call-iptables` is `1`. With that sysctl at `0` the
+node rules still drop everything routed off the node, which makes the boundary
+look intact, while a sandbox reaches every address on its own bridge — other
+sandboxes and the gateway's admin port included — without passing the gateway
+at all. The agent therefore reads the sysctl on every apply, sets it to `1`
+where it can, and warns loudly where it cannot; `RO_ENFORCE_BRIDGE_NF=false`
+turns the write off and leaves only the warning. If the module is not loaded at
+all the agent cannot set anything, so load `br_netfilter` on the node.
+
 This layer holds even if a NetworkPolicy is deleted or the CNI misbehaves,
-with one dataplane caveat. The rules live in the netfilter `forward` hook, so
+with one further dataplane caveat. The rules live in the netfilter `forward` hook, so
 they see a packet only if the packet traverses netfilter on its way off the
 node. That is true for veth-plus-bridge and routed dataplanes — Calico,
 Flannel, kindnet, the AWS VPC CNI in its usual modes. It is **not**

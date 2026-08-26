@@ -14,6 +14,7 @@ RO_TRANSPARENT="${RO_TRANSPARENT:-false}"
 RO_DNS_REDIRECT="${RO_DNS_REDIRECT:-false}"
 RO_SANDBOX_IFACES="${RO_SANDBOX_IFACES:-}"
 RO_ENFORCE_RP_FILTER="${RO_ENFORCE_RP_FILTER:-true}"
+RO_ENFORCE_BRIDGE_NF="${RO_ENFORCE_BRIDGE_NF:-true}"
 RO_HOOK="${RO_HOOK:-forward}"
 RO_MATCH_PRE_DNAT="${RO_MATCH_PRE_DNAT:-true}"
 RO_BLOCK_IPV6="${RO_BLOCK_IPV6:-true}"
@@ -203,6 +204,38 @@ check_rp_filter() {
         else
             log warn "reverse path filtering is disabled; set RO_ENFORCE_RP_FILTER=true or enable net.ipv4.conf.all.rp_filter"
         fi
+    fi
+}
+
+bridge_present() {
+    for _br in /sys/class/net/*/bridge; do
+        [ -d "$_br" ] && return 0
+    done
+    return 1
+}
+
+check_bridge_netfilter() {
+    call4="/proc/sys/net/bridge/bridge-nf-call-iptables"
+    call6="/proc/sys/net/bridge/bridge-nf-call-ip6tables"
+
+    if [ ! -e "$call4" ]; then
+        if bridge_present; then
+            log warn "this host has a bridge but br_netfilter is not loaded, so traffic between sandboxes on the same bridge never reaches this ruleset and is not filtered at all; load the br_netfilter module on the node"
+        fi
+        return 0
+    fi
+
+    [ "$(cat "$call4" 2>/dev/null || echo 0)" = "1" ] && return 0
+
+    if [ "$RO_ENFORCE_BRIDGE_NF" = "true" ]; then
+        if printf '1' > "$call4" 2>/dev/null; then
+            printf '1' > "$call6" 2>/dev/null || true
+            log info "enabled bridge netfilter so bridged sandbox traffic traverses the ruleset"
+        else
+            log warn "bridged traffic does not traverse netfilter and it could not be enabled, so a sandbox can reach every address on its own bridge, including other sandboxes and the gateway admin port, without passing the gateway; set net.bridge.bridge-nf-call-iptables=1 on the node"
+        fi
+    else
+        log warn "bridged traffic does not traverse netfilter, so a sandbox can reach every address on its own bridge without passing the gateway; set RO_ENFORCE_BRIDGE_NF=true or enable net.bridge.bridge-nf-call-iptables"
     fi
 }
 
@@ -457,6 +490,7 @@ run_loop() {
     bootstrap_deny
     preflight
     check_rp_filter
+    check_bridge_netfilter
     apply_ruleset
     log info "sandbox egress enforcement active"
 
@@ -496,6 +530,9 @@ Environment:
   RO_SANDBOX_IFACES         sandbox interface patterns, used to reject packets
                             that arrive from a sandbox with a forged source
   RO_ENFORCE_RP_FILTER      enable reverse path filtering (default true)
+  RO_ENFORCE_BRIDGE_NF      enable bridge netfilter so traffic between
+                            sandboxes on one bridge traverses the ruleset
+                            instead of bypassing it entirely (default true)
   RO_HOOK                   forward, output or both (default forward)
   RO_MATCH_PRE_DNAT         also accept the gateway address as the workload
                             asked for it, before any dnat rewrote it, which is
@@ -510,7 +547,7 @@ EOF
 command="${1:-run}"
 case "$command" in
     run) run_loop ;;
-    apply) bootstrap_deny; preflight; check_rp_filter; apply_ruleset; log info "ruleset applied" ;;
+    apply) bootstrap_deny; preflight; check_rp_filter; check_bridge_netfilter; apply_ruleset; log info "ruleset applied" ;;
     print) preflight; emit_ruleset ;;
     check) preflight; check_ruleset ;;
     status) status_ruleset ;;
