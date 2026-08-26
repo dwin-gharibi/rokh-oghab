@@ -22,6 +22,7 @@ local modules = {
     "test_redirect",
     "test_adminsource",
     "test_httpc",
+    "test_signing",
 }
 
 io.write("Rokh Oghab unit test suite\n")

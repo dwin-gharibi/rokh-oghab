@@ -96,8 +96,20 @@ h.describe("the control-plane client only speaks to a control plane", function()
         h.assert_eq(parts.port, 8081)
     end)
 
-    h.it("refuses anything that is not http", function()
-        for _, url in ipairs({ "https://x/", "file:///etc/passwd",
+    h.it("parses an https controller url and marks it for tls", function()
+        local parts = httpc.parse_url("https://ro-controller/v1/bundle")
+        h.assert_eq(parts.host, "ro-controller")
+        h.assert_eq(parts.port, 443)
+        h.assert_eq(parts.tls, true)
+    end)
+
+    h.it("leaves an http controller url as cleartext", function()
+        local parts = httpc.parse_url("http://ro-controller:8081/v1/bundle")
+        h.assert_true(not parts.tls)
+    end)
+
+    h.it("refuses anything that is not http or https", function()
+        for _, url in ipairs({ "file:///etc/passwd",
                                "gopher://x/", "//x/", "x", "" }) do
             h.assert_nil(httpc.parse_url(url), url .. " must be refused")
         end

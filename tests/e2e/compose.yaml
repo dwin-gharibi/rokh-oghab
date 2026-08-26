@@ -108,6 +108,7 @@ services:
       RO_CONTROLLER_OPERATOR_TOKEN: ctl-operator-token-00000000001
       RO_CONTROLLER_READER_TOKEN: ctl-reader-token-000000000001
       RO_CONTROLLER_GATEWAY_TOKEN: ctl-gateway-token-000000000001
+      RO_CONTROLLER_BUNDLE_SIGNING_KEY: ro-e2e-bundle-signing-key-000001
     ports:
       - "127.0.0.1:18081:8081"
     networks:

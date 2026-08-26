@@ -53,7 +53,8 @@ def ctl(method, path, body=None, token=ADMIN, content_type="application/json",
             parsed = json.loads(raw.decode())
         except (ValueError, UnicodeDecodeError):
             parsed = None
-        return {"status": status, "json": parsed, "body": raw}
+        return {"status": status, "json": parsed, "body": raw,
+                "headers": headers}
     finally:
         sock.close()
 
@@ -840,6 +841,25 @@ def t_gateway_rejects_bad_bundle(a):
     })
     a.eq(res["status"], 200)
     a.eq(res["json"]["valid"], False)
+
+
+@test("control-loop", "the served bundle carries a byte-exact hmac signature")
+def t_bundle_signature_is_byte_exact(a):
+    import hashlib
+    import hmac as hmac_mod
+    key = os.environ.get("RO_BUNDLE_SIGNING_KEY",
+                         "ro-e2e-bundle-signing-key-000001").encode()
+    res = ctl("GET", "/v1/bundle", token=GATEWAY)
+    a.eq(res["status"], 200)
+    sig = res["headers"].get("x-ro-bundle-signature")
+    a.true(sig is not None and sig.startswith("sha256="),
+           "the controller must sign the bundle it serves")
+    expected = "sha256=" + hmac_mod.new(key, res["body"],
+                                         hashlib.sha256).hexdigest()
+    a.eq(sig, expected, "the signature must cover the exact served bytes")
+    forged = "sha256=" + hmac_mod.new(key, res["body"] + b" ",
+                                      hashlib.sha256).hexdigest()
+    a.ne(sig, forged, "a single tampered byte must not verify")
 
 
 def main():

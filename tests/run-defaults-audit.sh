@@ -42,6 +42,15 @@ grep_absent() {
     fi
 }
 
+grep_present() {
+    local pattern="$1" file="$2" label="$3"
+    if grep -qE -- "$pattern" "$file" 2>/dev/null; then
+        ok "$label"
+    else
+        bad "$label" "$file no longer contains /$pattern/"
+    fi
+}
+
 printf 'Rokh Oghab shipped defaults audit\n'
 printf '%s\n' "======================================================================"
 
@@ -299,6 +308,26 @@ if command -v docker >/dev/null 2>&1; then
 else
     printf '    skip docker is not installed\n'
 fi
+
+printf '\n  the gateway can reach and trust its control plane\n'
+
+grep_present '^\s*resolver local=on' nginx.conf \
+    "the stream block resolves names, so a controller url may be a hostname"
+grep_present '^\s*lua_ssl_trusted_certificate' nginx.conf \
+    "a trust store is configured, so an https control plane can be verified"
+grep_present 'env RO_CONTROLLER_SIGNING_KEY' nginx.conf \
+    "the bundle signing key reaches the gateway configuration"
+grep_present 'env RO_CONTROLLER_REQUIRE_SIGNATURE' nginx.conf \
+    "the signature requirement reaches the gateway configuration"
+grep_present 'RO_CONTROLLER_BUNDLE_SIGNING_KEY' openresty/controller.conf \
+    "the bundle signing key reaches the controller configuration"
+
+json_is config/gateway.json controller.tlsVerify true \
+    "the gateway verifies an https control-plane certificate by default"
+json_is config/gateway.json controller.signingKey '""' \
+    "no bundle signing key is baked into the shipped configuration"
+json_is config/controller.json bundleSigningKey '""' \
+    "no bundle signing key is baked into the shipped controller configuration"
 
 printf '\n%s\n' "======================================================================"
 printf 'passed=%d failed=%d\n' "$PASS" "$FAIL"

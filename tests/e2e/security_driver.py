@@ -1247,7 +1247,6 @@ def t_emergency_local_cannot_beat_bundle(a):
     finally:
         restore = json.loads(json.dumps(bundle))
         restore["emergencyDeny"] = False
-        restore["version"] = bundle["version"] + 6000
         admin("POST", "/v1/bundle", restore)
         admin("POST", "/v1/emergency-deny", {"enabled": False})
         time.sleep(0.5)

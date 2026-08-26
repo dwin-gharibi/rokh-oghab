@@ -7,7 +7,9 @@
     "token": "ctl-gateway-token-000000000001",
     "pollSeconds": 2,
     "timeoutMs": 3000,
-    "failClosed": true
+    "failClosed": true,
+    "signingKey": "ro-e2e-bundle-signing-key-000001",
+    "requireSignature": true
   },
   "resolver": {
     "servers": [
