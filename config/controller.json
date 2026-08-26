@@ -2,6 +2,7 @@
   "dataDir": "/var/lib/rokh-oghab",
   "allowFrom": [],
   "principals": [],
+  "bundleSigningKey": "",
   "audit": {
     "path": "/dev/stdout",
     "level": "info",

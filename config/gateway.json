@@ -7,7 +7,12 @@
     "token": "",
     "pollSeconds": 10,
     "timeoutMs": 3000,
-    "failClosed": true
+    "failClosed": true,
+    "signingKey": "",
+    "acceptSigningKeys": [],
+    "requireSignature": false,
+    "tlsVerify": true,
+    "tlsServerName": ""
   },
   "resolver": {
     "servers": [
