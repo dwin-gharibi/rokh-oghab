@@ -1,0 +1,26 @@
+{{- if .Values.namespace.create }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ include "rokh-oghab.namespace" . }}
+  labels:
+    {{- include "rokh-oghab.labels" . | nindent 4 }}
+    {{- with .Values.namespace.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}
+{{- if .Values.sandbox.createNamespaces }}
+{{- range .Values.sandbox.namespaces }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ . }}
+  labels:
+    app.kubernetes.io/part-of: rokh-oghab
+    rokhoghab.io/sandbox: "true"
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+{{- end }}
+{{- end }}

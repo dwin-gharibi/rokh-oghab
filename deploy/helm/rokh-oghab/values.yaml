@@ -1,0 +1,247 @@
+nameOverride: ""
+fullnameOverride: ""
+
+global:
+  imageRegistry: ghcr.io/rokh-oghab
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+
+namespace:
+  create: true
+  name: rokh-oghab
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+
+sandbox:
+  namespaces:
+    - execution
+  createNamespaces: true
+  podCidrs:
+    - 10.244.0.0/16
+  podCidrs6: []
+  interfaces: []
+  serviceAccount:
+    create: true
+    name: sandbox-runner
+
+priorityClass:
+  create: true
+  name: rokh-oghab-critical
+  value: 1000000
+
+telemetry:
+  enabled: false
+  endpoint: ""
+  serviceName: rokh-oghab-gateway
+  sampleRatio: 1.0
+  trustIncomingTrace: false
+  recordDestination: false
+
+tokens:
+  create: true
+  existingSecret: ""
+  controller:
+    admin: ""
+    operator: ""
+    reader: ""
+    gateway: ""
+  gatewayAdmin: ""
+  gatewayAdminOperator: ""
+  gatewayAdminReader: ""
+
+gateway:
+  enabled: true
+  image:
+    repository: gateway
+    tag: ""
+    digest: ""
+  replicaCount: 3
+  mode: explicit
+  service:
+    type: ClusterIP
+    clusterIP: 10.96.0.53
+    proxyPort: 3128
+    dnsPort: 53
+    transparentHttpPort: 3080
+    transparentTlsPort: 3443
+    annotations: {}
+  admin:
+    public:
+      - healthz
+      - readyz
+      - metrics
+  adminService:
+    port: 9145
+  resources:
+    requests:
+      cpu: 200m
+      memory: 192Mi
+    limits:
+      cpu: "2"
+      memory: 512Mi
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/component: gateway
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+  extraEnv: []
+  terminationGracePeriodSeconds: 30
+
+  config:
+    resolver:
+      servers:
+        - 1.1.1.1:53
+        - 8.8.8.8:53
+      timeoutMs: 2000
+      retries: 2
+      minTtl: 5
+      maxTtl: 300
+      allowIPv6: true
+      preferIPv6: false
+      maxAddresses: 8
+    guard:
+      includeDefaults: true
+      blocked:
+        - 10.96.0.0/12
+        - 10.244.0.0/16
+      allowExceptions: []
+      blockObfuscated: true
+      allowIPv6: true
+    strict:
+      path: true
+      sniMatch: true
+      hostMatch: true
+      requireTls: false
+      minTlsVersion: "1.2"
+      redirectGuard: true
+      blockPlaintextOnTlsPorts: true
+      tlsPorts: [443, 8443, 9443]
+      verifyOriginalDestination: false
+    limits:
+      maxHeadBytes: 65536
+      maxRequestsPerConnection: 256
+      clientTimeoutMs: 60000
+      upstreamTimeoutMs: 30000
+      connectTimeoutMs: 5000
+      idleTimeoutMs: 120000
+      globalMaxConnections: 20000
+      defaultRequestsPerSecond: 0
+      defaultMaxConnections: 0
+    audit:
+      path: /dev/stdout
+      level: info
+      logPaths: false
+      logQuery: false
+      capacity: 4096
+      bufferMax: 64
+      flushInterval: 0.2
+    dns:
+      enabled: true
+      upstreamTimeoutMs: 2000
+      allowedTypes: ["A", "AAAA"]
+      maxAnswers: 8
+      denyResponse: nxdomain
+    admin:
+      allowFrom:
+        - 10.244.0.0/16
+        - 127.0.0.1/32
+      public:
+        - healthz
+        - readyz
+        - metrics
+    identities:
+      allowAnonymous: false
+
+controller:
+  enabled: true
+  image:
+    repository: controller
+    tag: ""
+    digest: ""
+  service:
+    port: 8081
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClass: ""
+    existingClaim: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      cpu: "1"
+      memory: 256Mi
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  pollSeconds: 10
+  failClosed: true
+
+agent:
+  enabled: true
+  image:
+    repository: agent
+    tag: ""
+    digest: ""
+  hook: forward
+  flushConntrack: true
+  bootstrapDeny: true
+  blockIPv6: true
+  ipv6Unscoped: refuse
+  transparent: false
+  reconcileSeconds: 15
+  logDrops: false
+  allowCidrs: []
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 64Mi
+  tolerations:
+    - operator: Exists
+  nodeSelector: {}
+
+networkPolicy:
+  enabled: true
+  adminNamespaceSelector:
+    rokhoghab.io/admin: "true"
+
+bootstrapPolicy:
+  denyCloudMetadata: true
+  denyClusterInternals: true
+  extraGlobalDenyCidrs: []
+
+profiles: {}
+
+monitoring:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    labels: {}
+  prometheusRule:
+    enabled: false
+    labels: {}
+
+tests:
+  enabled: true

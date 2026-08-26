@@ -1,0 +1,85 @@
+{{- if .Values.monitoring.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "rokh-oghab.fullname" . }}-gateway
+  namespace: {{ include "rokh-oghab.namespace" . }}
+  labels:
+    {{- include "rokh-oghab.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "rokh-oghab.gatewaySelectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: admin
+      path: /metrics
+      interval: {{ .Values.monitoring.serviceMonitor.interval }}
+{{- end }}
+{{- if .Values.monitoring.prometheusRule.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "rokh-oghab.fullname" . }}
+  namespace: {{ include "rokh-oghab.namespace" . }}
+  labels:
+    {{- include "rokh-oghab.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: rokh-oghab
+      rules:
+        - alert: RokhOghabPolicyStale
+          expr: ro_policy_stale > 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: A Rokh Oghab gateway is failing closed on a stale policy bundle
+            description: >-
+              The gateway cannot reach its controller and the active bundle has
+              aged past its staleness limit, so every request is being denied.
+        - alert: RokhOghabEmergencyDeny
+          expr: ro_emergency_deny > 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: The Rokh Oghab emergency deny switch is engaged
+            description: All sandbox egress is being refused.
+        - alert: RokhOghabDenialSpike
+          expr: sum(rate(ro_denied_total[5m])) by (profile) > 20
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: A sandbox profile is generating an unusual number of denials
+            description: >-
+              Profile {{ "{{ $labels.profile }}" }} is being denied more than 20
+              times per second, which usually means a missing policy rule or a
+              workload probing the boundary.
+        - alert: RokhOghabPolicyReloadFailing
+          expr: increase(ro_policy_reload_failures_total[15m]) > 3
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Rokh Oghab cannot load a policy bundle
+            description: The gateway has repeatedly failed to load a bundle.
+        - alert: RokhOghabGatewayDown
+          expr: up{job=~".*rokh-oghab.*"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: A Rokh Oghab gateway is unreachable
+            description: >-
+              Sandboxes routed through this gateway have no network path while
+              it is down. This is fail-closed behaviour, not an outage of the
+              boundary itself.
+{{- end }}

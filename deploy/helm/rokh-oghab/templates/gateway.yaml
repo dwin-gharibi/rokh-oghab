@@ -1,0 +1,288 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "rokh-oghab.fullname" . }}-gateway
+  namespace: {{ include "rokh-oghab.namespace" . }}
+  labels:
+    {{- include "rokh-oghab.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+  {{- with .Values.gateway.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.gateway.service.type }}
+  {{- with .Values.gateway.service.clusterIP }}
+  clusterIP: {{ . }}
+  {{- end }}
+  selector:
+    {{- include "rokh-oghab.gatewaySelectorLabels" . | nindent 4 }}
+  ports:
+    - name: proxy
+      port: {{ .Values.gateway.service.proxyPort }}
+      targetPort: proxy
+      protocol: TCP
+    - name: dns-udp
+      port: {{ .Values.gateway.service.dnsPort }}
+      targetPort: dns-udp
+      protocol: UDP
+    - name: dns-tcp
+      port: {{ .Values.gateway.service.dnsPort }}
+      targetPort: dns-tcp
+      protocol: TCP
+    - name: transparent-http
+      port: {{ .Values.gateway.service.transparentHttpPort }}
+      targetPort: t-http
+      protocol: TCP
+    - name: transparent-tls
+      port: {{ .Values.gateway.service.transparentTlsPort }}
+      targetPort: t-tls
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "rokh-oghab.fullname" . }}-gateway-admin
+  namespace: {{ include "rokh-oghab.namespace" . }}
+  labels:
+    {{- include "rokh-oghab.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "rokh-oghab.gatewaySelectorLabels" . | nindent 4 }}
+  ports:
+    - name: admin
+      port: {{ .Values.gateway.adminService.port }}
+      targetPort: admin
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "rokh-oghab.fullname" . }}-gateway
+  namespace: {{ include "rokh-oghab.namespace" . }}
+  labels:
+    {{- include "rokh-oghab.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  {{- if not .Values.gateway.autoscaling.enabled }}
+  replicas: {{ .Values.gateway.replicaCount }}
+  {{- end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "rokh-oghab.gatewaySelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "rokh-oghab.gatewaySelectorLabels" . | nindent 8 }}
+        {{- with .Values.gateway.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.gateway.adminService.port | quote }}
+        prometheus.io/path: /metrics
+        {{- with .Values.gateway.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "rokh-oghab.fullname" . }}-gateway
+      automountServiceAccountToken: false
+      priorityClassName: {{ .Values.priorityClass.name }}
+      terminationGracePeriodSeconds: {{ .Values.gateway.terminationGracePeriodSeconds }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.gateway.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "rokh-oghab.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: gateway
+          image: {{ include "rokh-oghab.image" (list .Values.gateway.image .) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          args: ["serve"]
+          ports:
+            - name: proxy
+              containerPort: 3128
+              protocol: TCP
+            - name: t-http
+              containerPort: 3080
+              protocol: TCP
+            - name: t-tls
+              containerPort: 3443
+              protocol: TCP
+            - name: dns-udp
+              containerPort: 5353
+              protocol: UDP
+            - name: dns-tcp
+              containerPort: 5353
+              protocol: TCP
+            - name: admin
+              containerPort: 9145
+              protocol: TCP
+          env:
+            - name: RO_NODE
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            {{- if .Values.controller.enabled }}
+            - name: RO_CONTROLLER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "rokh-oghab.tokenSecretName" . }}
+                  key: gateway
+            {{- end }}
+            - name: RO_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "rokh-oghab.tokenSecretName" . }}
+                  key: gatewayAdmin
+            - name: RO_ADMIN_OPERATOR_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "rokh-oghab.tokenSecretName" . }}
+                  key: gatewayAdminOperator
+                  optional: true
+            - name: RO_ADMIN_READER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "rokh-oghab.tokenSecretName" . }}
+                  key: gatewayAdminReader
+                  optional: true
+            {{- with .Values.gateway.admin.public }}
+            - name: RO_ADMIN_PUBLIC
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- if .Values.telemetry.enabled }}
+            - name: RO_OTEL_ENABLED
+              value: "true"
+            - name: RO_OTEL_ENDPOINT
+              value: {{ .Values.telemetry.endpoint | quote }}
+            - name: RO_OTEL_SERVICE_NAME
+              value: {{ .Values.telemetry.serviceName | quote }}
+            - name: RO_OTEL_SAMPLE_RATIO
+              value: {{ .Values.telemetry.sampleRatio | quote }}
+            - name: RO_OTEL_TRUST_INCOMING_TRACE
+              value: {{ .Values.telemetry.trustIncomingTrace | quote }}
+            - name: RO_OTEL_RECORD_DESTINATION
+              value: {{ .Values.telemetry.recordDestination | quote }}
+            {{- end }}
+            {{- with .Values.gateway.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          securityContext:
+            {{- include "rokh-oghab.containerSecurityContext" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: admin
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: admin
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            failureThreshold: 2
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: admin
+            periodSeconds: 2
+            failureThreshold: 30
+          volumeMounts:
+            - name: config
+              mountPath: /etc/rokh-oghab/gateway.json
+              subPath: gateway.json
+              readOnly: true
+            - name: bundle
+              mountPath: /etc/rokh-oghab/bundle
+              readOnly: true
+            - name: run
+              mountPath: /run/rokh-oghab
+      {{- with .Values.gateway.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.gateway.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.gateway.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "rokh-oghab.fullname" . }}-gateway-config
+        - name: bundle
+          configMap:
+            name: {{ include "rokh-oghab.fullname" . }}-bootstrap-bundle
+        - name: run
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi
+{{- if .Values.gateway.podDisruptionBudget.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "rokh-oghab.fullname" . }}-gateway
+  namespace: {{ include "rokh-oghab.namespace" . }}
+  labels:
+    {{- include "rokh-oghab.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.gateway.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "rokh-oghab.gatewaySelectorLabels" . | nindent 6 }}
+{{- end }}
+{{- if .Values.gateway.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "rokh-oghab.fullname" . }}-gateway
+  namespace: {{ include "rokh-oghab.namespace" . }}
+  labels:
+    {{- include "rokh-oghab.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "rokh-oghab.fullname" . }}-gateway
+  minReplicas: {{ .Values.gateway.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.gateway.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.gateway.autoscaling.targetCPUUtilizationPercentage }}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+{{- end }}
+{{- end }}

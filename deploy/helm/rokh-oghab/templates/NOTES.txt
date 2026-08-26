@@ -1,0 +1,76 @@
+Rokh Oghab is installed as release {{ .Release.Name }} in namespace {{ include "rokh-oghab.namespace" . }}.
+
+Nothing can leave a sandbox yet. The bootstrap bundle denies everything, and
+no sandbox identity exists. That is the correct starting point: you add
+permissions, you never remove them.
+
+THE SHORT WAY
+
+  bash scripts/ro-onboard.sh --release {{ .Release.Name }} \
+      --namespace {{ include "rokh-oghab.namespace" . }} \
+      --workload-namespace {{ index .Values.sandbox.namespaces 0 }} \
+      --workload my-sandbox --apply
+
+  That mints an identity, publishes it, stores the token as a Secret, prints
+  the pod spec fragment to paste, and runs a pod that proves a permitted
+  destination works and a direct one does not.
+
+THE LONG WAY, IF YOU WANT TO SEE EACH STEP
+
+1. Read the control-plane tokens:
+
+   kubectl -n {{ include "rokh-oghab.namespace" . }} get secret {{ include "rokh-oghab.tokenSecretName" . }} \
+     -o jsonpath='{.data.admin}' | base64 -d; echo
+
+2. Reach the controller:
+
+   kubectl -n {{ include "rokh-oghab.namespace" . }} port-forward svc/{{ include "rokh-oghab.fullname" . }}-controller {{ .Values.controller.service.port }}:{{ .Values.controller.service.port }}
+
+3. Describe what a sandbox may reach, then publish it:
+
+   export ROCTL_ENDPOINT=http://127.0.0.1:{{ .Values.controller.service.port }}
+   export ROCTL_TOKEN=<the admin token from step 1>
+
+   roctl policy apply -f my-policy.yaml
+   roctl publish
+
+4. Issue an identity for a sandbox and store it as a Secret:
+
+   roctl identity issue --namespace {{ index .Values.sandbox.namespaces 0 }} --profile untrusted-python
+   roctl publish
+
+5. Point the workload at the gateway:
+
+   env:
+     - name: HTTP_PROXY
+       value: http://{{ include "rokh-oghab.fullname" . }}-gateway.{{ include "rokh-oghab.namespace" . }}.svc.cluster.local:{{ .Values.gateway.service.proxyPort }}
+     - name: HTTPS_PROXY
+       value: http://{{ include "rokh-oghab.fullname" . }}-gateway.{{ include "rokh-oghab.namespace" . }}.svc.cluster.local:{{ .Values.gateway.service.proxyPort }}
+   dnsPolicy: None
+   dnsConfig:
+     nameservers: ["{{ .Values.gateway.service.clusterIP }}"]
+
+CHECK IT IS HEALTHY
+
+   helm test {{ .Release.Name }} -n {{ include "rokh-oghab.namespace" . }}
+
+   kubectl -n {{ include "rokh-oghab.namespace" . }} get pods
+   kubectl -n {{ include "rokh-oghab.namespace" . }} logs -l app.kubernetes.io/component=gateway --tail=20
+
+{{- if not .Values.networkPolicy.enabled }}
+
+WARNING: networkPolicy.enabled is false. Without the default-deny policies a
+sandbox can reach the network directly and Rokh Oghab becomes advisory rather
+than enforcing.
+{{- end }}
+{{- if not .Values.agent.enabled }}
+
+NOTE: agent.enabled is false. NetworkPolicy alone is the enforcement boundary.
+Enable the agent when you want node-level nftables enforcement as a second
+layer that does not depend on the CNI.
+{{- end }}
+{{- if .Values.gateway.config.identities.allowAnonymous }}
+
+WARNING: gateway.config.identities.allowAnonymous is true. Any workload that
+reaches the proxy is treated as an anonymous identity.
+{{- end }}

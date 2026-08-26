@@ -1,0 +1,132 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- range $ns := .Values.sandbox.namespaces }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-default-deny
+  namespace: {{ $ns }}
+  labels:
+    {{- include "rokh-oghab.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-egress-through-rokh-oghab-only
+  namespace: {{ $ns }}
+  labels:
+    {{- include "rokh-oghab.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ include "rokh-oghab.namespace" $ }}
+          podSelector:
+            matchLabels:
+              {{- include "rokh-oghab.gatewaySelectorLabels" $ | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ $.Values.gateway.service.proxyPort }}
+        - protocol: UDP
+          port: {{ $.Values.gateway.service.dnsPort }}
+        - protocol: TCP
+          port: {{ $.Values.gateway.service.dnsPort }}
+        - protocol: UDP
+          port: 5353
+        - protocol: TCP
+          port: 5353
+        {{- if $.Values.agent.transparent }}
+        - protocol: TCP
+          port: {{ $.Values.gateway.service.transparentHttpPort }}
+        - protocol: TCP
+          port: {{ $.Values.gateway.service.transparentTlsPort }}
+        {{- end }}
+---
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "rokh-oghab.fullname" . }}-gateway-ingress
+  namespace: {{ include "rokh-oghab.namespace" . }}
+  labels:
+    {{- include "rokh-oghab.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "rokh-oghab.gatewaySelectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              rokhoghab.io/sandbox: "true"
+      ports:
+        - protocol: TCP
+          port: 3128
+        - protocol: UDP
+          port: 5353
+        - protocol: TCP
+          port: 5353
+        - protocol: TCP
+          port: 3080
+        - protocol: TCP
+          port: 3443
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.adminNamespaceSelector | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 9145
+{{- if .Values.controller.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "rokh-oghab.fullname" . }}-controller-ingress
+  namespace: {{ include "rokh-oghab.namespace" . }}
+  labels:
+    {{- include "rokh-oghab.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "rokh-oghab.controllerSelectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "rokh-oghab.gatewaySelectorLabels" . | nindent 14 }}
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.adminNamespaceSelector | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 8081
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "rokh-oghab.fullname" . }}-controller-egress
+  namespace: {{ include "rokh-oghab.namespace" . }}
+  labels:
+    {{- include "rokh-oghab.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "rokh-oghab.controllerSelectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress: []
+{{- end }}
+{{- end }}

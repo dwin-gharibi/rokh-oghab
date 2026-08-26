@@ -1,0 +1,22 @@
+apiVersion: v2
+name: rokh-oghab
+description: >-
+  Rokh Oghab is a default-deny egress gateway for untrusted sandbox workloads.
+  Sandboxes reach the network only through it, and only where policy allows.
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - egress
+  - sandbox
+  - security
+  - proxy
+  - openresty
+  - network-policy
+home: https://github.com/dwin-gharibi/rokh-oghab
+sources:
+  - https://github.com/dwin-gharibi/rokh-oghab
+maintainers:
+  - name: Dwin Gharibi
+annotations:
+  category: Security

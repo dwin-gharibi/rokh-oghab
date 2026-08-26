@@ -1,0 +1,155 @@
+{{- if .Values.controller.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "rokh-oghab.fullname" . }}-controller
+  namespace: {{ include "rokh-oghab.namespace" . }}
+  labels:
+    {{- include "rokh-oghab.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "rokh-oghab.controllerSelectorLabels" . | nindent 4 }}
+  ports:
+    - name: api
+      port: {{ .Values.controller.service.port }}
+      targetPort: api
+      protocol: TCP
+{{- if and .Values.controller.persistence.enabled (not .Values.controller.persistence.existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "rokh-oghab.fullname" . }}-controller-data
+  namespace: {{ include "rokh-oghab.namespace" . }}
+  labels:
+    {{- include "rokh-oghab.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with .Values.controller.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.controller.persistence.size }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "rokh-oghab.fullname" . }}-controller
+  namespace: {{ include "rokh-oghab.namespace" . }}
+  labels:
+    {{- include "rokh-oghab.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "rokh-oghab.controllerSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "rokh-oghab.controllerSelectorLabels" . | nindent 8 }}
+      {{- with .Values.controller.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "rokh-oghab.fullname" . }}-controller
+      automountServiceAccountToken: false
+      priorityClassName: {{ .Values.priorityClass.name }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "rokh-oghab.podSecurityContext" . | nindent 8 }}
+        fsGroup: 65532
+      containers:
+        - name: controller
+          image: {{ include "rokh-oghab.image" (list .Values.controller.image .) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          args: ["serve"]
+          ports:
+            - name: api
+              containerPort: 8081
+              protocol: TCP
+          env:
+            - name: RO_CONTROLLER_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "rokh-oghab.tokenSecretName" . }}
+                  key: admin
+            - name: RO_CONTROLLER_OPERATOR_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "rokh-oghab.tokenSecretName" . }}
+                  key: operator
+            - name: RO_CONTROLLER_READER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "rokh-oghab.tokenSecretName" . }}
+                  key: reader
+            - name: RO_CONTROLLER_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "rokh-oghab.tokenSecretName" . }}
+                  key: gateway
+          securityContext:
+            {{- include "rokh-oghab.containerSecurityContext" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.controller.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: api
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: api
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/rokh-oghab
+            - name: run
+              mountPath: /run/rokh-oghab
+            - name: tmp
+              mountPath: /tmp
+      {{- with .Values.controller.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.controller.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.controller.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: data
+        {{- if .Values.controller.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-controller-data" (include "rokh-oghab.fullname" .)) .Values.controller.persistence.existingClaim }}
+        {{- else }}
+          emptyDir: {}
+        {{- end }}
+        - name: run
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
+{{- end }}

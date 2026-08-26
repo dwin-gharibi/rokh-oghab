@@ -1,0 +1,49 @@
+{{- if .Values.tests.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "rokh-oghab.fullname" . }}-test
+  namespace: {{ include "rokh-oghab.namespace" . }}
+  labels:
+    {{- include "rokh-oghab.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: hook-succeeded,before-hook-creation
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: probe
+      image: {{ include "rokh-oghab.image" (list .Values.gateway.image .) }}
+      command:
+        - /bin/sh
+        - -c
+        - |
+          set -eu
+          admin="http://{{ include "rokh-oghab.fullname" . }}-gateway-admin:{{ .Values.gateway.adminService.port }}"
+          echo "checking gateway health at $admin"
+          curl -sS --fail --max-time 10 "$admin/healthz" > /dev/null
+          echo "checking gateway readiness"
+          curl -sS --fail --max-time 10 "$admin/readyz" > /dev/null
+          echo "checking that metrics are exposed"
+          curl -sS --fail --max-time 10 "$admin/metrics" | grep -q ro_requests_total
+          echo "checking that the proxy denies an unidentified request"
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \
+            -x "http://{{ include "rokh-oghab.fullname" . }}-gateway:{{ .Values.gateway.service.proxyPort }}" \
+            http://example.com/ || true)
+          if [ "$code" != "407" ] && [ "$code" != "403" ]; then
+            echo "expected the gateway to refuse an unidentified request, got $code"
+            exit 1
+          fi
+          echo "all checks passed"
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+{{- end }}

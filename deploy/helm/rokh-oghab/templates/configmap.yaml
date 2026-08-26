@@ -1,0 +1,81 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "rokh-oghab.fullname" . }}-gateway-config
+  namespace: {{ include "rokh-oghab.namespace" . }}
+  labels:
+    {{- include "rokh-oghab.labels" . | nindent 4 }}
+data:
+  gateway.json: |
+    {{- $config := dict
+        "node" "ro-gateway"
+        "mode" .Values.gateway.mode
+        "bundleFile" "/etc/rokh-oghab/bundle/bundle.json"
+        "controller" (dict
+            "url" (ternary (include "rokh-oghab.controllerUrl" .) "" .Values.controller.enabled)
+            "pollSeconds" .Values.controller.pollSeconds
+            "timeoutMs" 3000
+            "failClosed" .Values.controller.failClosed)
+        "resolver" .Values.gateway.config.resolver
+        "guard" .Values.gateway.config.guard
+        "strict" .Values.gateway.config.strict
+        "limits" .Values.gateway.config.limits
+        "audit" .Values.gateway.config.audit
+        "dns" .Values.gateway.config.dns
+        "admin" .Values.gateway.config.admin
+        "identities" .Values.gateway.config.identities }}
+    {{- toPrettyJson $config | nindent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "rokh-oghab.fullname" . }}-bootstrap-bundle
+  namespace: {{ include "rokh-oghab.namespace" . }}
+  labels:
+    {{- include "rokh-oghab.labels" . | nindent 4 }}
+data:
+  bundle.json: |
+    {{- $rules := list }}
+    {{- if .Values.bootstrapPolicy.denyCloudMetadata }}
+    {{- $rules = append $rules (dict
+        "name" "deny-cloud-metadata"
+        "action" "deny"
+        "destinations" (dict "cidrs" (list "169.254.0.0/16" "100.100.100.200/32" "192.0.0.192/32" "fd00:ec2::254/128"))) }}
+    {{- end }}
+    {{- if .Values.bootstrapPolicy.denyClusterInternals }}
+    {{- $rules = append $rules (dict
+        "name" "deny-cluster-internals"
+        "action" "deny"
+        "destinations" (dict "cidrs" (concat (list "10.96.0.0/12" "127.0.0.0/8" "fc00::/7" "fe80::/10" "::1/128") .Values.sandbox.podCidrs))) }}
+    {{- end }}
+    {{- if .Values.bootstrapPolicy.extraGlobalDenyCidrs }}
+    {{- $rules = append $rules (dict
+        "name" "deny-operator-defined"
+        "action" "deny"
+        "destinations" (dict "cidrs" .Values.bootstrapPolicy.extraGlobalDenyCidrs)) }}
+    {{- end }}
+    {{- $policies := list (dict
+        "name" "global-baseline"
+        "tier" "global"
+        "priority" 0
+        "rules" $rules) }}
+    {{- range $name, $profile := .Values.profiles }}
+    {{- $policies = append $policies (dict
+        "name" (printf "profile-%s" $name)
+        "tier" "profile"
+        "priority" 10
+        "selector" (dict "profiles" (list $name))
+        "rules" $profile.rules) }}
+    {{- end }}
+    {{- $bundle := dict
+        "version" 0
+        "issuedAt" 0
+        "ttlSeconds" 300
+        "emergencyDeny" false
+        "defaults" (dict "maxStalenessSeconds" 900)
+        "guard" (dict "blocked" (list) "allowExceptions" (list))
+        "identities" (dict "allowAnonymous" false "tokens" (dict) "sources" (list))
+        "policies" $policies }}
+    {{- toPrettyJson $bundle | nindent 4 }}
+{{- end }}

@@ -1,0 +1,47 @@
+# A starting point for a first install.
+#
+# Two values here are specific to your cluster and cannot be guessed by a
+# chart. Run scripts/ro-preflight.sh: it reads both off the cluster and prints
+# the install command with them filled in.
+#
+#   bash scripts/ro-preflight.sh
+#
+#   helm upgrade --install ro deploy/helm/rokh-oghab \
+#     --namespace rokh-oghab --create-namespace \
+#     -f deploy/helm/values-quickstart.yaml \
+#     --set gateway.service.clusterIP=10.96.0.53 \
+#     --set sandbox.podCidrs[0]=10.244.0.0/16 \
+#     --wait
+#
+# gateway.service.clusterIP
+#   Sandboxes use it as their only nameserver, and a nameserver has to be an
+#   address rather than a name. It must be free and inside the service CIDR
+#   this cluster actually uses, so there is no default that works everywhere.
+#   The chart refuses to install without it while the node agent is enabled,
+#   rather than programming nftables with an empty address.
+#
+# sandbox.podCidrs
+#   What the node agent confines. Wrong value, wrong boundary: too narrow and
+#   nothing is confined, too wide and you drop traffic that was never a
+#   sandbox's.
+
+gateway:
+  replicaCount: 2
+  service:
+    clusterIP: "10.96.0.53"
+
+sandbox:
+  namespaces:
+    - execution
+  createNamespaces: true
+  podCidrs:
+    - 10.244.0.0/16
+
+networkPolicy:
+  enabled: true
+agent:
+  enabled: true
+
+telemetry:
+  enabled: false
+  endpoint: ""
