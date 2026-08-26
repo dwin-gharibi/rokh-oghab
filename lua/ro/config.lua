@@ -13,6 +13,11 @@ local DEFAULTS = {
         pollSeconds = 10,
         timeoutMs = 3000,
         failClosed = true,
+        signingKey = "",
+        acceptSigningKeys = {},
+        requireSignature = false,
+        tlsVerify = true,
+        tlsServerName = "",
     },
     resolver = {
         servers = { "1.1.1.1:53", "8.8.8.8:53" },
@@ -180,6 +185,11 @@ function _M.load(path)
     envset(env("RO_CONTROLLER_TOKEN"), conf.controller, "token")
     envset(env("RO_CONTROLLER_POLL_SECONDS"), conf.controller, "pollSeconds", "number")
     envset(env("RO_CONTROLLER_FAIL_CLOSED"), conf.controller, "failClosed", "boolean")
+    envset(env("RO_CONTROLLER_SIGNING_KEY"), conf.controller, "signingKey")
+    envset(env("RO_CONTROLLER_REQUIRE_SIGNATURE"), conf.controller,
+        "requireSignature", "boolean")
+    envset(env("RO_CONTROLLER_TLS_VERIFY"), conf.controller, "tlsVerify", "boolean")
+    envset(env("RO_CONTROLLER_TLS_SERVER_NAME"), conf.controller, "tlsServerName")
     envset(env("RO_OTEL_ENABLED"), conf.telemetry, "enabled", "boolean")
     envset(env("RO_OTEL_ENDPOINT"), conf.telemetry, "endpoint")
     envset(env("RO_OTEL_SERVICE_NAME"), conf.telemetry, "serviceName")
@@ -213,6 +223,18 @@ function _M.load(path)
         conf.admin.public = list
     end
 
+    local accept_keys = env("RO_CONTROLLER_ACCEPT_SIGNING_KEYS")
+    if accept_keys ~= nil and accept_keys ~= "" then
+        local list = {}
+        for _, entry in ipairs(util.split(accept_keys, ",")) do
+            local k = util.trim(entry)
+            if k ~= "" then
+                list[#list + 1] = k
+            end
+        end
+        conf.controller.acceptSigningKeys = list
+    end
+
     local servers = env("RO_RESOLVER_SERVERS")
     if servers and servers ~= "" then
         conf.resolver.servers = util.split(servers, ",")
@@ -231,6 +253,34 @@ function _M.validate(conf)
     if conf.mode ~= "explicit" and conf.mode ~= "transparent_http"
         and conf.mode ~= "transparent_tls" then
         return nil, "mode must be explicit, transparent_http or transparent_tls"
+    end
+    local ctl = conf.controller or {}
+    if type(ctl.url) == "string" and ctl.url ~= "" then
+        local scheme = ctl.url:match("^(%a[%w+.-]*)://")
+        if scheme ~= "http" and scheme ~= "https" then
+            return nil, "controller.url must be an http or https url"
+        end
+    end
+    if type(ctl.signingKey) == "string" and ctl.signingKey ~= ""
+        and #ctl.signingKey < 16 then
+        return nil, "controller.signingKey must be at least 16 characters"
+    end
+    local accept = ctl.acceptSigningKeys
+    if accept ~= nil then
+        if type(accept) ~= "table" or not util.is_array(accept) then
+            return nil, "controller.acceptSigningKeys must be an array of keys"
+        end
+        for _, k in ipairs(accept) do
+            if type(k) ~= "string" or #k < 16 then
+                return nil, "every controller.acceptSigningKeys entry must be "
+                    .. "a string of at least 16 characters"
+            end
+        end
+    end
+    local has_key = type(ctl.signingKey) == "string" and ctl.signingKey ~= ""
+    local has_accept = type(accept) == "table" and #accept > 0
+    if ctl.requireSignature == true and not has_key and not has_accept then
+        return nil, "controller.requireSignature needs controller.signingKey"
     end
     local servers = _M.parse_servers(conf.resolver.servers)
     if #servers == 0 then

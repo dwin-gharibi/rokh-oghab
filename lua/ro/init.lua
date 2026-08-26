@@ -107,6 +107,41 @@ local function read_file(path)
     return body
 end
 
+local function hmac_matches(key, body, presented)
+    if type(key) ~= "string" or key == "" then
+        return false
+    end
+    local expected = util.hmac_sha256_hex(key, body)
+    if not expected then
+        return false
+    end
+    return util.const_eq(presented, expected)
+end
+
+local function bundle_signature_ok(ctl, res)
+    local key = ctl.signingKey
+    local accept = ctl.acceptSigningKeys
+    local extras = type(accept) == "table" and #accept or 0
+    if (not key or key == "") and extras == 0 then
+        return ctl.requireSignature ~= true
+    end
+    local header = res.headers and res.headers:get("x-ro-bundle-signature")
+    if not header then
+        return false
+    end
+    local presented = header:gsub("^sha256=", "")
+    local body = res.body or ""
+    if hmac_matches(key, body, presented) then
+        return true
+    end
+    for i = 1, extras do
+        if hmac_matches(accept[i], body, presented) then
+            return true
+        end
+    end
+    return false
+end
+
 local function poll_controller(premature)
     if premature then
         return
@@ -114,9 +149,12 @@ local function poll_controller(premature)
     local interval = conf.controller.pollSeconds or 10
     local url = conf.controller.url
     if url and url ~= "" then
+        local ctl = conf.controller
         local res, err = httpc.request(url .. "/v1/bundle", {
-            token = conf.controller.token,
-            timeout = conf.controller.timeoutMs,
+            token = ctl.token,
+            timeout = ctl.timeoutMs,
+            tls_verify = ctl.tlsVerify ~= false,
+            tls_server_name = ctl.tlsServerName,
         })
         if not res then
             log.warn("controller poll failed", { error = tostring(err) })
@@ -128,6 +166,11 @@ local function poll_controller(premature)
         elseif not res.json then
             log.warn("controller returned invalid json")
             metrics.inc("ro_policy_reload_failures_total", { reason = "json" })
+        elseif not bundle_signature_ok(ctl, res) then
+            log.error("controller bundle signature did not verify; refusing to "
+                .. "adopt it")
+            metrics.inc("ro_policy_reload_failures_total", { reason = "signature" })
+            metrics.set("ro_policy_stale", nil, 1)
         else
             state.mark_fresh()
             local digest = util.content_digest(res.json)

@@ -18,9 +18,11 @@ local function parse_url(url)
         return nil, "url missing scheme"
     end
     local scheme = sub(url, 1, scheme_end - 1):lower()
-    if scheme ~= "http" then
-        return nil, "only http:// control-plane urls are supported"
+    if scheme ~= "http" and scheme ~= "https" then
+        return nil, "only http:// and https:// control-plane urls are supported"
     end
+    local tls = scheme == "https"
+    local default_port = tls and 443 or 80
     local rest = sub(url, scheme_end + 3)
     local cut = find(rest, "/", 1, true)
     local authority = cut and sub(rest, 1, cut - 1) or rest
@@ -29,21 +31,22 @@ local function parse_url(url)
     if sub(authority, 1, 1) == "[" then
         local close = find(authority, "]", 1, true)
         host = sub(authority, 2, close - 1)
-        port = tonumber(sub(authority, close + 2)) or 80
+        port = tonumber(sub(authority, close + 2)) or default_port
     else
         local colon = find(authority, ":", 1, true)
         if colon then
             host = sub(authority, 1, colon - 1)
-            port = tonumber(sub(authority, colon + 1)) or 80
+            port = tonumber(sub(authority, colon + 1)) or default_port
         else
             host = authority
-            port = 80
+            port = default_port
         end
     end
     if not host or host == "" then
         return nil, "url missing host"
     end
-    return { host = host, port = port, path = path, authority = authority }
+    return { host = host, port = port, path = path, authority = authority,
+             tls = tls }
 end
 
 _M.parse_url = parse_url
@@ -138,6 +141,28 @@ function _M.request(url, opts)
     local ok, cerr = sock:connect(parts.host, parts.port)
     if not ok then
         return nil, "connect: " .. tostring(cerr)
+    end
+
+    if parts.tls then
+        local verify = opts.tls_verify ~= false
+        local sni = opts.tls_server_name
+        if not sni or sni == "" then
+            sni = parts.host
+        end
+        local hok, herr
+        if sock.tlshandshake then
+            hok, herr = sock:tlshandshake({ verify = verify, server_name = sni })
+        elseif sock.sslhandshake then
+            hok, herr = sock:sslhandshake(nil, sni, verify)
+        else
+            sock:close()
+            return nil, "tls: this build cannot complete a tls handshake, so an "
+                .. "https control-plane url is refused rather than downgraded"
+        end
+        if not hok then
+            sock:close()
+            return nil, "tls: " .. tostring(herr)
+        end
     end
 
     local method = opts.method or "GET"

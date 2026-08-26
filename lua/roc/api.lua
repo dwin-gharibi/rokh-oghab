@@ -19,6 +19,7 @@ local conf
 local principals = {}
 local allow_set
 local unrestricted_sources = false
+local bundle_signing_key
 
 local ROLE_RANK = { gateway = 1, reader = 2, operator = 3, admin = 4 }
 local TOKEN_DIGEST_LEN = 64
@@ -52,6 +53,16 @@ function _M.configure(c)
                 name = entry.name or "unnamed",
                 role = entry.role or "reader",
             }
+        end
+    end
+    bundle_signing_key = nil
+    if type(c.bundleSigningKey) == "string" and c.bundleSigningKey ~= "" then
+        if #c.bundleSigningKey < 16 then
+            ngx.log(ngx.ERR, "ro-controller: bundleSigningKey is shorter than "
+                .. "16 characters and is refused; bundles will be served "
+                .. "unsigned until a strong key is set")
+        else
+            bundle_signing_key = c.bundleSigningKey
         end
     end
     allow_set = nil
@@ -206,7 +217,19 @@ route("GET", "^/v1/bundle$", "gateway", function()
         return fail(503, "no_bundle", tostring(err))
     end
     metrics.inc("roc_bundle_served_total", { version = tostring(bundle.version) })
-    return say(200, bundle)
+    local body = cjson.encode(bundle)
+    ngx.status = 200
+    ngx.header["Content-Type"] = "application/json"
+    ngx.header["Cache-Control"] = "no-store"
+    ngx.header["X-Content-Type-Options"] = "nosniff"
+    if bundle_signing_key then
+        local sig = util.hmac_sha256_hex(bundle_signing_key, body)
+        if sig then
+            ngx.header["X-RO-Bundle-Signature"] = "sha256=" .. sig
+        end
+    end
+    ngx.print(body)
+    return ngx.exit(200)
 end)
 
 route("GET", "^/v1/status$", "reader", function()

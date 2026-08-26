@@ -13,6 +13,7 @@ local DEFAULTS = {
     dataDir = "/var/lib/rokh-oghab",
     allowFrom = {},
     principals = {},
+    bundleSigningKey = "",
     audit = {
         path = "/dev/stdout",
         level = "info",
@@ -61,6 +62,11 @@ function _M.init()
     local data_dir = os.getenv("RO_CONTROLLER_DATA_DIR")
     if data_dir and data_dir ~= "" then
         conf.dataDir = data_dir
+    end
+
+    local signing_key = os.getenv("RO_CONTROLLER_BUNDLE_SIGNING_KEY")
+    if signing_key and signing_key ~= "" then
+        conf.bundleSigningKey = signing_key
     end
 
     local function add_principal(env_name, name, role)

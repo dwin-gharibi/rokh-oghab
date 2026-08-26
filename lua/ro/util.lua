@@ -95,6 +95,52 @@ function _M.const_eq(a, b)
     return diff == 0
 end
 
+local function byte_xor(a, b)
+    local r, p = 0, 1
+    for _ = 1, 8 do
+        local x, y = a % 2, b % 2
+        if x ~= y then r = r + p end
+        a = floor((a - x) / 2)
+        b = floor((b - y) / 2)
+        p = p * 2
+    end
+    return r
+end
+
+local function sha256_raw(s)
+    local d = resty_sha256:new()
+    d:update(s)
+    return d:final()
+end
+
+function _M.hmac_sha256(key, message)
+    if not (ok_sha and ok_str) then
+        return nil
+    end
+    if type(key) ~= "string" or type(message) ~= "string" then
+        return nil
+    end
+    if #key > 64 then
+        key = sha256_raw(key)
+    end
+    local ipad, opad = {}, {}
+    for i = 1, 64 do
+        local kb = (i <= #key) and byte(key, i) or 0
+        ipad[i] = char(byte_xor(kb, 0x36))
+        opad[i] = char(byte_xor(kb, 0x5c))
+    end
+    local inner = sha256_raw(concat(ipad) .. message)
+    return sha256_raw(concat(opad) .. inner)
+end
+
+function _M.hmac_sha256_hex(key, message)
+    local raw = _M.hmac_sha256(key, message)
+    if not raw then
+        return nil
+    end
+    return resty_string.to_hex(raw)
+end
+
 function _M.clamp(v, lo, hi)
     if type(v) ~= "number" then
         return lo
