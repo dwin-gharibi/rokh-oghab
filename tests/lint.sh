@@ -18,10 +18,16 @@ exit $fail
 '
 echo "==> Lua syntax check passed"
 
-echo "==> gateway configuration check"
-docker run --rm "${RO_GATEWAY_IMAGE:-rokh-oghab/gateway:dev}" check
-echo "==> gateway configuration check passed"
+config_check() {
+    local role="$1" image="$2"
+    if ! docker image inspect "$image" >/dev/null 2>&1; then
+        echo "==> $role configuration check skipped ($image is not built here)"
+        return 0
+    fi
+    echo "==> $role configuration check"
+    docker run --rm "$image" check
+    echo "==> $role configuration check passed"
+}
 
-echo "==> controller configuration check"
-docker run --rm "${RO_CONTROLLER_IMAGE:-rokh-oghab/controller:dev}" check
-echo "==> controller configuration check passed"
+config_check gateway "${RO_GATEWAY_IMAGE:-rokh-oghab/gateway:dev}"
+config_check controller "${RO_CONTROLLER_IMAGE:-rokh-oghab/controller:dev}"

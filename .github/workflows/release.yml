@@ -100,6 +100,15 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
+      - name: The published image must accept its own configuration
+        if: matrix.component == 'gateway' || matrix.component == 'controller'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            "${REGISTRY}/${IMAGE_PREFIX}/${{ matrix.component }}@${DIGEST}" check
+
       - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
 
       - name: Sign the image
