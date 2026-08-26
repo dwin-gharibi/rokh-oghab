@@ -1,0 +1,155 @@
+name: rokh-oghab-e2e
+
+networks:
+  ro_test:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.99.0.0/24
+          gateway: 10.99.0.1
+
+services:
+  testdns:
+    image: openresty/openresty:1.27.1.2-0-alpine-fat
+    container_name: ro-e2e-testdns
+    command: ["/usr/local/openresty/nginx/sbin/nginx", "-c", "/etc/testdns/nginx.conf", "-p", "/usr/local/openresty/nginx"]
+    volumes:
+      - ../../lua:/usr/local/rokh-oghab/lua:ro
+      - ./testdns:/etc/testdns:ro
+    networks:
+      ro_test:
+        ipv4_address: 10.99.0.53
+
+  origin-a:
+    image: openresty/openresty:1.27.1.2-0-alpine-fat
+    container_name: ro-e2e-origin-a
+    environment:
+      ORIGIN_NAME: origin-a
+    command: ["/usr/local/openresty/nginx/sbin/nginx", "-c", "/etc/origin/nginx.conf", "-p", "/usr/local/openresty/nginx"]
+    volumes:
+      - ./origin/nginx.conf:/etc/origin/nginx.conf:ro
+      - ./certs:/etc/origin/certs:ro
+    networks:
+      ro_test:
+        ipv4_address: 10.99.0.10
+
+  origin-b:
+    image: openresty/openresty:1.27.1.2-0-alpine-fat
+    container_name: ro-e2e-origin-b
+    environment:
+      ORIGIN_NAME: origin-b
+    command: ["/usr/local/openresty/nginx/sbin/nginx", "-c", "/etc/origin/nginx.conf", "-p", "/usr/local/openresty/nginx"]
+    volumes:
+      - ./origin/nginx.conf:/etc/origin/nginx.conf:ro
+      - ./certs:/etc/origin/certs:ro
+    networks:
+      ro_test:
+        ipv4_address: 10.99.0.11
+
+  origin-raw:
+    image: openresty/openresty:1.27.1.2-0-alpine-fat
+    container_name: ro-e2e-origin-raw
+    command: ["/usr/local/openresty/nginx/sbin/nginx", "-c", "/etc/rawserver/nginx.conf", "-p", "/usr/local/openresty/nginx"]
+    volumes:
+      - ./rawserver:/etc/rawserver:ro
+    networks:
+      ro_test:
+        ipv4_address: 10.99.0.12
+
+  collector:
+    image: openresty/openresty:1.27.1.2-0-alpine-fat
+    container_name: ro-e2e-collector
+    command: ["/usr/local/openresty/nginx/sbin/nginx", "-c", "/etc/collector/nginx.conf", "-p", "/usr/local/openresty/nginx"]
+    volumes:
+      - ./collector:/etc/collector:ro
+    ports:
+      - "127.0.0.1:14318:4318"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -q -O- http://127.0.0.1:4318/collected >/dev/null 2>&1"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 2s
+    networks:
+      ro_test:
+        ipv4_address: 10.99.0.13
+
+  gateway:
+    image: rokh-oghab/gateway:dev
+    container_name: ro-e2e-gateway
+    depends_on:
+      - testdns
+      - origin-a
+      - origin-b
+    environment:
+      RO_CONFIG: /etc/rokh-oghab/gateway.json
+      RO_BUNDLE_FILE: /etc/rokh-oghab/bundle.json
+      RO_OTEL_ENABLED: "true"
+      RO_OTEL_ENDPOINT: http://10.99.0.13:4318
+      RO_OTEL_SERVICE_NAME: ro-e2e-gateway
+    volumes:
+      - ./config/gateway.json:/etc/rokh-oghab/gateway.json:ro
+      - ./config/bundle.json:/etc/rokh-oghab/bundle.json:ro
+    ports:
+      - "127.0.0.1:13128:3128"
+      - "127.0.0.1:13080:3080"
+      - "127.0.0.1:13443:3443"
+      - "127.0.0.1:19145:9145"
+      - "127.0.0.1:15353:5353/udp"
+    networks:
+      ro_test:
+        ipv4_address: 10.99.0.5
+
+  controller:
+    image: rokh-oghab/controller:dev
+    container_name: ro-e2e-controller
+    environment:
+      RO_CONTROLLER_ADMIN_TOKEN: ctl-admin-token-0000000000001
+      RO_CONTROLLER_OPERATOR_TOKEN: ctl-operator-token-00000000001
+      RO_CONTROLLER_READER_TOKEN: ctl-reader-token-000000000001
+      RO_CONTROLLER_GATEWAY_TOKEN: ctl-gateway-token-000000000001
+    ports:
+      - "127.0.0.1:18081:8081"
+    networks:
+      ro_test:
+        ipv4_address: 10.99.0.6
+
+  gateway-managed:
+    image: rokh-oghab/gateway:dev
+    container_name: ro-e2e-gateway-managed
+    depends_on:
+      - controller
+      - testdns
+      - origin-a
+    environment:
+      RO_CONFIG: /etc/rokh-oghab/gateway.json
+      RO_BUNDLE_FILE: /var/lib/rokh-oghab/bundle.json
+    volumes:
+      - ./config/gateway-managed.json:/etc/rokh-oghab/gateway.json:ro
+      - ../../config/bootstrap-bundle.json:/etc/rokh-oghab/bootstrap.json:ro
+    tmpfs:
+      - /var/lib/rokh-oghab:mode=1777
+    ports:
+      - "127.0.0.1:13129:3128"
+      - "127.0.0.1:19146:9145"
+    networks:
+      ro_test:
+        ipv4_address: 10.99.0.7
+
+  client:
+    image: openresty/openresty:1.27.1.2-0-alpine-fat
+    container_name: ro-e2e-client
+    command: ["sleep", "infinity"]
+    depends_on:
+      - gateway
+    volumes:
+      - ../../lua:/usr/local/rokh-oghab/lua:ro
+      - ./dnsq.lua:/opt/dnsq.lua:ro
+    environment:
+      HTTP_PROXY: http://10.99.0.5:3128
+      HTTPS_PROXY: http://10.99.0.5:3128
+      http_proxy: http://10.99.0.5:3128
+      https_proxy: http://10.99.0.5:3128
+    networks:
+      ro_test:
+        ipv4_address: 10.99.0.20

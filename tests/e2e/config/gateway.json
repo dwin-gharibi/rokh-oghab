@@ -1,0 +1,110 @@
+{
+  "node": "ro-gateway-e2e",
+  "mode": "explicit",
+  "bundleFile": "/etc/rokh-oghab/bundle.json",
+  "controller": {
+    "url": "",
+    "token": "",
+    "pollSeconds": 10,
+    "failClosed": true
+  },
+  "resolver": {
+    "servers": [
+      "10.99.0.53:53"
+    ],
+    "timeoutMs": 2000,
+    "retries": 2,
+    "minTtl": 1,
+    "maxTtl": 30,
+    "allowIPv6": true,
+    "preferIPv6": false,
+    "maxAddresses": 8
+  },
+  "guard": {
+    "includeDefaults": true,
+    "blocked": [],
+    "allowExceptions": [
+      "10.99.0.0/24"
+    ],
+    "blockObfuscated": true,
+    "allowIPv6": true
+  },
+  "strict": {
+    "path": true,
+    "sniMatch": true,
+    "hostMatch": true,
+    "requireTls": false,
+    "minTlsVersion": "1.2",
+    "redirectGuard": true,
+    "blockPlaintextOnTlsPorts": true,
+    "verifyOriginalDestination": false,
+    "tlsPorts": [
+      443,
+      8443,
+      9443
+    ]
+  },
+  "limits": {
+    "maxHeadBytes": 65536,
+    "maxRequestsPerConnection": 256,
+    "clientTimeoutMs": 30000,
+    "upstreamTimeoutMs": 20000,
+    "connectTimeoutMs": 5000,
+    "idleTimeoutMs": 60000,
+    "globalMaxConnections": 5000,
+    "defaultRequestsPerSecond": 0,
+    "defaultMaxConnections": 0
+  },
+  "audit": {
+    "path": "/dev/stdout",
+    "level": "info",
+    "logPaths": true,
+    "logQuery": false,
+    "capacity": 4096,
+    "bufferMax": 1,
+    "flushInterval": 0.1
+  },
+  "dns": {
+    "enabled": true,
+    "upstreamTimeoutMs": 2000,
+    "allowedTypes": [
+      "A",
+      "AAAA"
+    ],
+    "maxAnswers": 8,
+    "denyResponse": "nxdomain"
+  },
+  "admin": {
+    "token": "ro-e2e-admin-token-000000000001",
+    "allowFrom": [
+      "127.0.0.1/32",
+      "::1/128",
+      "10.99.0.0/24"
+    ],
+    "readerToken": "ro-e2e-reader-token-00000000001",
+    "operatorToken": "ro-e2e-operator-token-000000001",
+    "public": [
+      "healthz",
+      "readyz",
+      "metrics"
+    ]
+  },
+  "identities": {
+    "allowAnonymous": false
+  },
+  "telemetry": {
+    "enabled": false,
+    "endpoint": "",
+    "tracesPath": "/v1/traces",
+    "serviceName": "rokh-oghab-gateway",
+    "serviceNamespace": "rokh-oghab",
+    "headers": {},
+    "sampleRatio": 1.0,
+    "maxQueue": 512,
+    "maxBatch": 128,
+    "timeoutMs": 2000,
+    "exportIntervalSeconds": 5,
+    "trustIncomingTrace": false,
+    "recordDestination": false
+  }
+}

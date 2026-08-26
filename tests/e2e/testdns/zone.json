@@ -1,0 +1,148 @@
+{
+  "allowed.test": {
+    "a": [
+      "10.99.0.10"
+    ],
+    "ttl": 5
+  },
+  "api.allowed.test": {
+    "a": [
+      "10.99.0.10"
+    ],
+    "ttl": 5
+  },
+  "files.allowed.test": {
+    "a": [
+      "10.99.0.10"
+    ],
+    "ttl": 5
+  },
+  "deep.files.allowed.test": {
+    "a": [
+      "10.99.0.10"
+    ],
+    "ttl": 5
+  },
+  "evilallowed.test": {
+    "a": [
+      "10.99.0.11"
+    ],
+    "ttl": 5
+  },
+  "allowed.test.evil.io": {
+    "a": [
+      "10.99.0.11"
+    ],
+    "ttl": 5
+  },
+  "denied.test": {
+    "a": [
+      "10.99.0.11"
+    ],
+    "ttl": 5
+  },
+  "other.test": {
+    "a": [
+      "10.99.0.11"
+    ],
+    "ttl": 5
+  },
+  "rebind.test": {
+    "a": [
+      "169.254.169.254"
+    ],
+    "ttl": 1
+  },
+  "loopback.test": {
+    "a": [
+      "127.0.0.1"
+    ],
+    "ttl": 1
+  },
+  "internal.test": {
+    "a": [
+      "10.98.0.5"
+    ],
+    "ttl": 5
+  },
+  "mixed.test": {
+    "a": [
+      "169.254.169.254",
+      "10.99.0.10"
+    ],
+    "ttl": 5
+  },
+  "v6only.test": {
+    "aaaa": [
+      "2606:4700:4700::1111"
+    ],
+    "ttl": 5
+  },
+  "v6internal.test": {
+    "aaaa": [
+      "::ffff:169.254.169.254"
+    ],
+    "ttl": 5
+  },
+  "tunnel.test": {
+    "a": [
+      "10.99.0.10"
+    ],
+    "txt": "exfiltrated-data-channel",
+    "ttl": 5
+  },
+  "ratelimited.test": {
+    "a": [
+      "10.99.0.10"
+    ],
+    "ttl": 5
+  },
+  "pathrule.test": {
+    "a": [
+      "10.99.0.10"
+    ],
+    "ttl": 5
+  },
+  "tlsonly.test": {
+    "a": [
+      "10.99.0.10"
+    ],
+    "ttl": 5
+  },
+  "bandwidth.test": {
+    "a": [
+      "10.99.0.10"
+    ],
+    "ttl": 5
+  },
+  "raw.test": {
+    "a": [
+      "10.99.0.12"
+    ],
+    "ttl": 5
+  },
+  "gateway-self.test": {
+    "a": [
+      "10.99.0.5"
+    ],
+    "ttl": 5
+  },
+  "controller-self.test": {
+    "a": [
+      "10.99.0.6"
+    ],
+    "ttl": 5
+  },
+  "custom.test": {
+    "a": [
+      "10.99.0.10"
+    ],
+    "ttl": 5
+  },
+  "rawtcp.test": {
+    "a": [
+      "10.99.0.10"
+    ],
+    "ttl": 5
+  }
+}
