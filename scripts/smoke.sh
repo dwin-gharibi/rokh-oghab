@@ -4,7 +4,6 @@ set -uo pipefail
 PROXY="${RO_PROXY:-http://127.0.0.1:13128}"
 ADMIN="${RO_ADMIN:-http://127.0.0.1:19145}"
 TOKEN="${RO_TOKEN:-ro-e2e-python-token-0000000001}"
-ADMIN_TOKEN="${RO_ADMIN_TOKEN:-ro-e2e-admin-token-000000000001}"
 ALLOWED="${RO_ALLOWED_URL:-http://allowed.test/}"
 DENIED="${RO_DENIED_URL:-http://denied.test/}"
 

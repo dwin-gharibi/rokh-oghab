@@ -8,9 +8,11 @@ FAIL=0
 ok()  { printf '    ok   %s\n' "$1"; PASS=$((PASS + 1)); }
 bad() { printf '    FAIL %s\n         %s\n' "$1" "${2:-}"; FAIL=$((FAIL + 1)); }
 
+HERMETIC=(RO_IPV6_PRESENT=no)
+
 expect_valid() {
     local name="$1"; shift
-    if out=$(env "$@" "$AGENT" check 2>&1); then
+    if out=$(env "${HERMETIC[@]}" "$@" "$AGENT" check 2>&1); then
         ok "$name"
     else
         bad "$name" "$out"
@@ -19,7 +21,7 @@ expect_valid() {
 
 expect_rejected() {
     local name="$1"; shift
-    if out=$(env "$@" "$AGENT" check 2>&1); then
+    if out=$(env "${HERMETIC[@]}" "$@" "$AGENT" check 2>&1); then
         bad "$name" "accepted but should have been rejected"
     else
         ok "$name"
@@ -27,7 +29,7 @@ expect_rejected() {
 }
 
 ruleset_of() {
-    env "$@" "$AGENT" print 2>/dev/null
+    env "${HERMETIC[@]}" "$@" "$AGENT" print 2>/dev/null
 }
 
 expect_contains() {
@@ -66,6 +68,8 @@ printf '\n  ruleset generation\n'
 BASE=(RO_GATEWAY_ADDR=10.99.0.5 RO_SANDBOX_CIDRS=10.244.0.0/16)
 if ! command -v nft >/dev/null 2>&1; then
     printf '    skip nft validation (nft is not installed)\n'
+elif ! nft list ruleset >/dev/null 2>&1; then
+    printf '    skip nft validation (nft cannot reach netlink without privilege)\n'
 else
     expect_valid "a minimal ruleset is valid" "${BASE[@]}"
     expect_valid "multiple sandbox ranges are valid" \

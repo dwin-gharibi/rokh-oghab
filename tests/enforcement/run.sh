@@ -19,6 +19,40 @@ ok()   { printf '    ok   %s\n' "$1"; PASS=$((PASS + 1)); }
 bad()  { printf '    FAIL %s\n         %s\n' "$1" "${2:-}"; FAIL=$((FAIL + 1)); }
 note() { printf '\n  %s\n' "$1"; }
 
+host_veth_for() {
+    local container="$1" iflink iface name
+    iflink="$(docker exec "$container" cat /sys/class/net/eth0/iflink 2>/dev/null)" \
+        || return 1
+    case "$iflink" in
+        ''|*[!0-9]*) return 1 ;;
+    esac
+    for iface in /sys/class/net/*; do
+        name="$(basename "$iface")"
+        case "$name" in
+            veth*|cali*|lxc*|eni*) ;;
+            *) continue ;;
+        esac
+        if [ "$(cat "$iface/ifindex" 2>/dev/null)" = "$iflink" ]; then
+            printf '%s' "$name"
+            return 0
+        fi
+    done
+    return 1
+}
+
+scope_sandbox_ipv6() {
+    local veth
+    veth="$(host_veth_for "$1" || true)"
+    if [ -n "$veth" ]; then
+        export RO_SANDBOX_IFACES="$veth"
+        note "sandbox interface on the host is $veth"
+    else
+        export RO_IPV6_UNSCOPED=allow
+        note "the sandbox interface could not be determined; this IPv4-only \
+network accepts unfiltered ipv6 deliberately"
+    fi
+}
+
 cleanup() {
     printf '\n  cleaning up\n'
     RO_TABLE=ro_enforce_test "$AGENT" flush >/dev/null 2>&1 || true
@@ -148,6 +182,8 @@ CONF
         "$BASE_IMAGE" sleep infinity >/dev/null
 
     sleep 5
+
+    scope_sandbox_ipv6 ro-enf-sandbox
 
     note "baseline: without enforcement the sandbox has unrestricted egress"
     if sandbox_can_reach_directly; then

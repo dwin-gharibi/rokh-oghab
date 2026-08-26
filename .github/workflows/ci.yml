@@ -73,7 +73,7 @@ jobs:
       - name: Install nftables
         run: sudo apt-get update -qq && sudo apt-get install -y -qq nftables
       - name: Validate every generated ruleset
-        run: bash tests/run-agent.sh
+        run: sudo -E bash tests/run-agent.sh
 
   manifests:
     name: manifests

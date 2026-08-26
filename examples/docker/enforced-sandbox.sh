@@ -185,6 +185,7 @@ RO_SANDBOX_CIDRS="$SANDBOX_IP/32" \
 RO_DNS_PORT=5353 \
 RO_DNS_REDIRECT=true \
 RO_HOOK=forward \
+RO_IPV6_UNSCOPED="${RO_DEMO_IPV6_UNSCOPED:-allow}" \
 "$AGENT" apply || { echo "failed to apply enforcement" >&2; exit 1; }
 
 nft list table inet "$TABLE" | sed 's/^/    /'

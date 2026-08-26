@@ -171,7 +171,9 @@ VETH="$(host_veth_for ro-bypass-sandbox || true)"
 if [ -n "$VETH" ]; then
     note "sandbox interface on the host is $VETH"
 else
-    note "could not determine the sandbox interface"
+    export RO_IPV6_UNSCOPED=allow
+    note "could not determine the sandbox interface; this IPv4-only network \
+accepts unfiltered ipv6 deliberately"
 fi
 
 note "applying node enforcement"

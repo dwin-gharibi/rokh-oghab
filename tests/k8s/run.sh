@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-cd "$ROOT"
+cd "$ROOT" || exit 1
 
 RELEASE="${RO_K8S_RELEASE:-ro}"
 NS="${RO_K8S_NAMESPACE:-rokh-oghab}"

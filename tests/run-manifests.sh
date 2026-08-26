@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT"
+cd "$ROOT" || exit 1
 
 K8S_VERSION="${RO_K8S_VERSION:-1.31.0}"
 CHART="deploy/helm/rokh-oghab"

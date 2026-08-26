@@ -75,6 +75,44 @@ def write_temp(text, suffix=".yaml"):
     return fh.name
 
 
+SIMULATE_POLICY = """
+apiVersion: rokhoghab.io/v1
+kind: EgressPolicy
+metadata:
+  name: managed-python
+  tier: profile
+  priority: 10
+spec:
+  defaultAction: deny
+  selector:
+    profiles:
+      - managed-python
+  rules:
+    - name: allowed-origin
+      action: allow
+      destinations:
+        hostnames:
+          - allowed.test
+      ports: [80]
+      protocols:
+        - http
+"""
+
+
+def seed_control_plane():
+    path = write_temp(SIMULATE_POLICY)
+    try:
+        res = roctl("policy", "apply", "-f", path, token=OPERATOR)
+        if res["rc"] != 0:
+            return "policy apply failed: %s" % res["err"].strip()
+        res = roctl("publish", token=OPERATOR)
+        if res["rc"] != 0:
+            return "publish failed: %s" % res["err"].strip()
+    finally:
+        os.unlink(path)
+    return None
+
+
 @test("cli", "the output flag is accepted before and after the subcommand")
 def t_output_flag_placement(a):
     commands = [
@@ -331,6 +369,10 @@ def main():
 
     print("Rokh Oghab command-line suite")
     print("=" * 72)
+    seed_error = seed_control_plane()
+    if seed_error:
+        print("\n  could not seed the control plane: %s" % seed_error)
+        return 1
     started = time.time()
     passed = failed = 0
     failures = []

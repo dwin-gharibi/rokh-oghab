@@ -73,7 +73,8 @@ preflight() {
 }
 
 healthcheck() {
-    port="${1:-9145}"
+    RO_HEALTH_PORT="${1:-9145}"
+    export RO_HEALTH_PORT
     "$RESTY_BIN" -e '
         local sock = ngx.socket.tcp()
         sock:settimeout(2000)
