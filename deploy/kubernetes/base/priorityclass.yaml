@@ -1,0 +1,10 @@
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: rokh-oghab-critical
+value: 1000000
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: >-
+  Rokh Oghab is the only egress path for sandboxed workloads. If it is evicted
+  those workloads lose all network access, so it must outrank tenant workloads.

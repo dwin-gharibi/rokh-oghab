@@ -1,0 +1,115 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-default-deny
+  namespace: execution
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-egress-through-rokh-oghab-only
+  namespace: execution
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: rokh-oghab
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: rokh-oghab
+              app.kubernetes.io/component: gateway
+      ports:
+        - protocol: TCP
+          port: 3128
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+        - protocol: UDP
+          port: 5353
+        - protocol: TCP
+          port: 5353
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gateway-ingress
+  namespace: rokh-oghab
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: rokh-oghab
+      app.kubernetes.io/component: gateway
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              rokhoghab.io/sandbox: "true"
+      ports:
+        - protocol: TCP
+          port: 3128
+        - protocol: UDP
+          port: 5353
+        - protocol: TCP
+          port: 5353
+        - protocol: TCP
+          port: 3080
+        - protocol: TCP
+          port: 3443
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              rokhoghab.io/admin: "true"
+      ports:
+        - protocol: TCP
+          port: 9145
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: controller-ingress
+  namespace: rokh-oghab
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: rokh-oghab
+      app.kubernetes.io/component: controller
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: rokh-oghab
+              app.kubernetes.io/component: gateway
+        - namespaceSelector:
+            matchLabels:
+              rokhoghab.io/admin: "true"
+      ports:
+        - protocol: TCP
+          port: 8081
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: controller-egress
+  namespace: rokh-oghab
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: rokh-oghab
+      app.kubernetes.io/component: controller
+  policyTypes:
+    - Egress
+  egress: []

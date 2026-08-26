@@ -1,0 +1,120 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rokh-oghab-gateway-config
+  namespace: rokh-oghab
+data:
+  gateway.json: |
+    {
+      "node": "ro-gateway",
+      "mode": "explicit",
+      "bundleFile": "/etc/rokh-oghab/bundle/bundle.json",
+      "controller": {
+        "url": "http://rokh-oghab-controller.rokh-oghab.svc.cluster.local:8081",
+        "pollSeconds": 10,
+        "timeoutMs": 3000,
+        "failClosed": true
+      },
+      "resolver": {
+        "servers": ["1.1.1.1:53", "8.8.8.8:53"],
+        "timeoutMs": 2000,
+        "retries": 2,
+        "minTtl": 5,
+        "maxTtl": 300,
+        "allowIPv6": true,
+        "preferIPv6": false,
+        "maxAddresses": 8
+      },
+      "guard": {
+        "includeDefaults": true,
+        "blocked": ["10.96.0.0/12", "10.244.0.0/16"],
+        "allowExceptions": [],
+        "blockObfuscated": true,
+        "allowIPv6": true
+      },
+      "strict": {
+        "path": true,
+        "sniMatch": true,
+        "hostMatch": true,
+        "requireTls": false,
+        "minTlsVersion": "1.2",
+        "redirectGuard": true,
+        "blockPlaintextOnTlsPorts": true,
+        "verifyOriginalDestination": false
+      },
+      "limits": {
+        "maxHeadBytes": 65536,
+        "maxRequestsPerConnection": 256,
+        "clientTimeoutMs": 60000,
+        "upstreamTimeoutMs": 30000,
+        "connectTimeoutMs": 5000,
+        "idleTimeoutMs": 120000,
+        "globalMaxConnections": 20000,
+        "defaultRequestsPerSecond": 0,
+        "defaultMaxConnections": 0
+      },
+      "audit": {
+        "path": "/dev/stdout",
+        "level": "info",
+        "logPaths": false,
+        "logQuery": false,
+        "capacity": 4096,
+        "bufferMax": 64,
+        "flushInterval": 0.2
+      },
+      "dns": {
+        "enabled": true,
+        "upstreamTimeoutMs": 2000,
+        "allowedTypes": ["A", "AAAA"],
+        "maxAnswers": 8,
+        "denyResponse": "nxdomain"
+      },
+      "admin": {
+        "allowFrom": ["10.244.0.0/16", "127.0.0.1/32"]
+      },
+      "identities": {
+        "allowAnonymous": false
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rokh-oghab-bootstrap-bundle
+  namespace: rokh-oghab
+data:
+  bundle.json: |
+    {
+      "version": 0,
+      "issuedAt": 0,
+      "ttlSeconds": 300,
+      "emergencyDeny": false,
+      "defaults": { "maxStalenessSeconds": 900 },
+      "guard": { "blocked": [], "allowExceptions": [] },
+      "identities": { "allowAnonymous": false, "tokens": {}, "sources": [] },
+      "policies": [
+        {
+          "name": "global-baseline",
+          "tier": "global",
+          "priority": 0,
+          "rules": [
+            {
+              "name": "deny-cloud-metadata",
+              "action": "deny",
+              "destinations": {
+                "cidrs": ["169.254.0.0/16", "100.100.100.200/32",
+                          "192.0.0.192/32", "fd00:ec2::254/128"]
+              }
+            },
+            {
+              "name": "deny-cluster-internals",
+              "action": "deny",
+              "destinations": {
+                "cidrs": ["10.96.0.0/12", "10.244.0.0/16", "127.0.0.0/8",
+                          "fc00::/7", "fe80::/10", "::1/128"]
+              }
+            }
+          ]
+        }
+      ]
+    }
