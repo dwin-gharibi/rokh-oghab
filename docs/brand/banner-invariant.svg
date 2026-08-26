@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2400 430" role="img"
+     aria-label="The invariant: an untrusted workload cannot reach a destination unless path, destination, protocol, identity and policy all authorise it.">
+  <defs>
+    <linearGradient id="gold-line" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#D98A20"/>
+      <stop offset="62%" stop-color="#F5A63C"/>
+      <stop offset="100%" stop-color="#FFD76B"/>
+    </linearGradient>
+    <linearGradient id="bbg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0B1033"/>
+      <stop offset="100%" stop-color="#080C28"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#F5A63C" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#F5A63C" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#F5A63C" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="2396" height="426" rx="26" fill="url(#bbg)" stroke="#2B3A8F" stroke-width="2"/>
+  <rect x="20" y="20" width="2360" height="390" rx="16" fill="none" stroke="#F5A63C" stroke-opacity="0.22" stroke-width="1.6"/>
+  <rect x="360" y="2" width="1680" height="3" fill="url(#edge)"/>
+
+  <g transform="translate(-71.3,-18.1) scale(0.46)">
+  <!-- left shield half -->
+  <path d="M248,148 H384 V232 H511.5 V866 L248,582 Z" fill="#3040AD"/>
+  <!-- right shield half -->
+  <path d="M775,148 H640 V232 H511.5 V866 L775,582 Z" fill="#1D2664"/>
+  <!-- centre merlon tab -->
+  <rect x="444" y="148" width="67.5" height="84" fill="#FFD76B"/>
+  <rect x="511.5" y="148" width="67.5" height="84" fill="#FAC052"/>
+  <!-- the eagle -->
+  <path d="M384,228
+           L640,228
+           L676,240 L699,260 L722,300 L734,330 L742,362
+           L600,401
+           L583,430 L574,460 L557,520 L541,580 L525,640 L511.5,690
+           L416,520 L402,460 L395,430 L389,400 L380,360 L374,330 L368,300
+           L375,260 L381,240 Z"
+        fill="#F5A63C"/>
+  <!-- beak hook -->
+  <path d="M742,362 L735,406 L719,446 L700,403 Z" fill="#F5A63C"/>
+  <!-- eye -->
+  <path d="M605,307 L645,288 L670,325 L630,341 Z" fill="#141C4E"/>
+  <!-- keel diamond -->
+  <path d="M511.5,741 L511.5,802 L494,771 Z" fill="#FFD76B"/>
+  <path d="M511.5,741 L529,771 L511.5,802 Z" fill="#FAC052"/>
+</g>
+
+  <g font-family="Inter,'Segoe UI',-apple-system,'Helvetica Neue',Arial,'DejaVu Sans',sans-serif">
+    <text x="332" y="96" font-size="24" letter-spacing="10" font-weight="600" fill="#F5A63C" opacity="0.9">THE ONE SENTENCE IT EXISTS TO MAKE TRUE</text>
+    <text x="330" y="164" font-size="44" fill="#E8ECFF" letter-spacing="0.4">An untrusted workload cannot reach a destination</text>
+    <text x="330" y="222" font-size="44" fill="#E8ECFF" letter-spacing="0.4">unless five separate layers each say yes.</text>
+    <rect x="332" y="268" width="124" height="46" rx="23" fill="none" stroke="#F5A63C" stroke-opacity="0.6" stroke-width="1.8"/>
+    <text x="360" y="299" font-size="23" letter-spacing="3" font-weight="600" fill="#F5A63C" textLength="68" lengthAdjust="spacingAndGlyphs">PATH</text>
+    <text x="474" y="299" font-size="26" fill="#8FA0FF">∧</text>
+    <rect x="516" y="268" width="243" height="46" rx="23" fill="none" stroke="#F5A63C" stroke-opacity="0.6" stroke-width="1.8"/>
+    <text x="544" y="299" font-size="23" letter-spacing="3" font-weight="600" fill="#F5A63C" textLength="187" lengthAdjust="spacingAndGlyphs">DESTINATION</text>
+    <text x="777" y="299" font-size="26" fill="#8FA0FF">∧</text>
+    <rect x="819" y="268" width="192" height="46" rx="23" fill="none" stroke="#F5A63C" stroke-opacity="0.6" stroke-width="1.8"/>
+    <text x="847" y="299" font-size="23" letter-spacing="3" font-weight="600" fill="#F5A63C" textLength="136" lengthAdjust="spacingAndGlyphs">PROTOCOL</text>
+    <text x="1029" y="299" font-size="26" fill="#8FA0FF">∧</text>
+    <rect x="1071" y="268" width="192" height="46" rx="23" fill="none" stroke="#F5A63C" stroke-opacity="0.6" stroke-width="1.8"/>
+    <text x="1099" y="299" font-size="23" letter-spacing="3" font-weight="600" fill="#F5A63C" textLength="136" lengthAdjust="spacingAndGlyphs">IDENTITY</text>
+    <text x="1281" y="299" font-size="26" fill="#8FA0FF">∧</text>
+    <rect x="1323" y="268" width="158" height="46" rx="23" fill="none" stroke="#F5A63C" stroke-opacity="0.6" stroke-width="1.8"/>
+    <text x="1351" y="299" font-size="23" letter-spacing="3" font-weight="600" fill="#F5A63C" textLength="102" lengthAdjust="spacingAndGlyphs">POLICY</text>
+    <text x="332" y="376" font-size="26" fill="#7D8AC7">Any one of them saying <tspan fill="#FF5470" font-weight="600">no</tspan> is enough. When the answer is not clearly yes, it is no.</text>
+  </g>
+
+  <!-- gate glyph on the right -->
+  <g transform="translate(2140,120)">
+    <path d="M0,240 V80 Q0,28 70,8 Q140,28 140,80 V240" fill="none" stroke="url(#gold-line)" stroke-width="6"/>
+    <rect x="64" y="26" width="12" height="250" rx="6" fill="#FAC052" opacity="0.75"/>
+    <path d="M70,120 l12,15 -12,15 -12,-15 Z" fill="#FFD76B"/>
+    <path d="M-52,196 L-24,224 M-24,196 L-52,224" stroke="#FF5470" stroke-width="6" stroke-linecap="round" opacity="0.7"/>
+  </g>
+</svg>

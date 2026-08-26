@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 280" role="img" aria-label="Rokh Oghab — default-deny egress gateway">
+  <defs>
+    <linearGradient id="type" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFD76B"/>
+      <stop offset="55%" stop-color="#FAC052"/>
+      <stop offset="100%" stop-color="#E8952E"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(-1.8,-29.4) scale(0.334)">
+  <!-- left shield half -->
+  <path d="M248,148 H384 V232 H511.5 V866 L248,582 Z" fill="#3040AD"/>
+  <!-- right shield half -->
+  <path d="M775,148 H640 V232 H511.5 V866 L775,582 Z" fill="#1D2664"/>
+  <!-- centre merlon tab -->
+  <rect x="444" y="148" width="67.5" height="84" fill="#FFD76B"/>
+  <rect x="511.5" y="148" width="67.5" height="84" fill="#FAC052"/>
+  <!-- the eagle -->
+  <path d="M384,228
+           L640,228
+           L676,240 L699,260 L722,300 L734,330 L742,362
+           L600,401
+           L583,430 L574,460 L557,520 L541,580 L525,640 L511.5,690
+           L416,520 L402,460 L395,430 L389,400 L380,360 L374,330 L368,300
+           L375,260 L381,240 Z"
+        fill="#F5A63C"/>
+  <!-- beak hook -->
+  <path d="M742,362 L735,406 L719,446 L700,403 Z" fill="#F5A63C"/>
+  <!-- eye -->
+  <path d="M605,307 L645,288 L670,325 L630,341 Z" fill="#141C4E"/>
+  <!-- keel diamond -->
+  <path d="M511.5,741 L511.5,802 L494,771 Z" fill="#FFD76B"/>
+  <path d="M511.5,741 L529,771 L511.5,802 Z" fill="#FAC052"/>
+</g>
+  <g font-family="Inter,'Segoe UI',-apple-system,'Helvetica Neue',Arial,'DejaVu Sans',sans-serif">
+    <text x="300" y="118" font-size="82" font-weight="800" letter-spacing="8" fill="url(#type)"
+          textLength="740" lengthAdjust="spacing">ROKH OGHAB</text>
+    <text x="303" y="172" font-size="30" letter-spacing="0.5" fill="#7D8AC7">The eagle watches the one way out.</text>
+    <g font-size="21" letter-spacing="3" font-weight="600">
+      <rect x="303" y="208" width="250" height="44" rx="22" fill="none" stroke="#F5A63C" stroke-opacity="0.6" stroke-width="1.6"/>
+      <text x="327" y="237" fill="#F5A63C" textLength="202" lengthAdjust="spacingAndGlyphs">DEFAULT DENY</text>
+      <rect x="577" y="208" width="232" height="44" rx="22" fill="none" stroke="#7D8AC7" stroke-opacity="0.55" stroke-width="1.6"/>
+      <text x="601" y="237" fill="#7D8AC7" textLength="184" lengthAdjust="spacingAndGlyphs">FAIL CLOSED</text>
+      <rect x="833" y="208" width="232" height="44" rx="22" fill="none" stroke="#7D8AC7" stroke-opacity="0.55" stroke-width="1.6"/>
+      <text x="857" y="237" fill="#7D8AC7" textLength="184" lengthAdjust="spacingAndGlyphs">ONE WAY OUT</text>
+    </g>
+  </g>
+</svg>
