@@ -1,0 +1,26 @@
+{
+  "version": 0,
+  "issuedAt": 0,
+  "ttlSeconds": 300,
+  "emergencyDeny": false,
+  "defaults": { "maxStalenessSeconds": 900 },
+  "guard": { "blocked": [], "allowExceptions": [] },
+  "identities": { "allowAnonymous": false, "tokens": {}, "sources": [] },
+  "policies": [
+    {
+      "name": "global-baseline",
+      "tier": "global",
+      "priority": 0,
+      "rules": [
+        {
+          "name": "deny-cloud-metadata",
+          "action": "deny",
+          "destinations": {
+            "cidrs": ["169.254.0.0/16", "100.100.100.200/32",
+                      "192.0.0.192/32", "fd00:ec2::254/128"]
+          }
+        }
+      ]
+    }
+  ]
+}

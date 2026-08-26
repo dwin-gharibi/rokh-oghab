@@ -1,0 +1,19 @@
+---
+- name: Render the controller configuration
+  ansible.builtin.template:
+    src: controller.json.j2
+    dest: "{{ ro_controller_config_dir }}/controller.json"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "python3 -c \"import json,sys; json.load(open(sys.argv[1]))\" %s"
+  notify: Restart the controller
+
+- name: Write the controller environment file
+  ansible.builtin.template:
+    src: controller.env.j2
+    dest: /etc/default/rokh-oghab-controller
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart the controller

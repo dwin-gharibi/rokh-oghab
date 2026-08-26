@@ -1,0 +1,7 @@
+---
+ro_agent_enabled: true
+ro_agent_gateway_addr: "{{ ro_gateway_service_address }}"
+ro_agent_sandbox_cidrs: "{{ ro_sandbox_pod_cidrs }}"
+ro_agent_dns_redirect: true
+ro_agent_block_ipv6: true
+ro_agent_hook: forward

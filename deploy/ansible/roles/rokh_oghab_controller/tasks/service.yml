@@ -1,0 +1,25 @@
+---
+- name: Pull the controller image
+  ansible.builtin.command:
+    cmd: "{{ ro_controller_runtime }} pull {{ ro_controller_image }}"
+  register: ro_controller_pull
+  changed_when: "'Downloaded newer image' in ro_controller_pull.stdout"
+  failed_when: ro_controller_pull.rc != 0
+
+- name: Install the controller service unit
+  ansible.builtin.template:
+    src: rokh-oghab-controller.service.j2
+    dest: /etc/systemd/system/rokh-oghab-controller.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart the controller
+
+- name: Enable and start the controller
+  ansible.builtin.systemd:
+    name: rokh-oghab-controller
+    enabled: true
+    state: started
+    daemon_reload: true

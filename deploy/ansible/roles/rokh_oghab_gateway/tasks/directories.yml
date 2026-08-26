@@ -1,0 +1,16 @@
+---
+- name: Create the configuration directory
+  ansible.builtin.file:
+    path: "{{ ro_gateway_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create the state directory
+  ansible.builtin.file:
+    path: "{{ ro_gateway_state_dir }}"
+    state: directory
+    owner: "65532"
+    group: "65532"
+    mode: "0750"

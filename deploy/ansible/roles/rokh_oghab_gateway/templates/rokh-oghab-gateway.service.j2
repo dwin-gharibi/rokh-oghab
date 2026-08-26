@@ -1,0 +1,40 @@
+[Unit]
+Description=Rokh Oghab egress gateway
+Documentation=https://github.com/dwin-gharibi/rokh-oghab
+After=network-online.target {{ ro_gateway_runtime }}.service
+Wants=network-online.target
+Requires={{ ro_gateway_runtime }}.service
+
+[Service]
+Type=exec
+EnvironmentFile=/etc/default/rokh-oghab-gateway
+ExecStartPre=-/usr/bin/{{ ro_gateway_runtime }} rm -f {{ ro_gateway_container_name }}
+ExecStart=/usr/bin/{{ ro_gateway_runtime }} run \
+    --name {{ ro_gateway_container_name }} \
+    --rm \
+    --read-only \
+    --user 65532:65532 \
+    --cap-drop ALL \
+    --security-opt no-new-privileges \
+    --tmpfs /run/rokh-oghab:uid=65532,gid=65532,mode=0700 \
+    --cpus {{ ro_gateway_cpus }} \
+    --memory {{ ro_gateway_memory }} \
+    --ulimit nofile=65535:65535 \
+    -p {{ ro_gateway_bind_address }}:{{ ro_gateway_proxy_port }}:3128 \
+    -p {{ ro_gateway_bind_address }}:{{ ro_gateway_dns_port }}:5353/udp \
+    -p {{ ro_gateway_bind_address }}:{{ ro_gateway_dns_port }}:5353/tcp \
+    -p {{ ro_gateway_admin_bind_address }}:{{ ro_gateway_admin_port }}:9145 \
+    -e RO_NODE -e RO_CONFIG -e RO_BUNDLE_FILE -e RO_ADMIN_TOKEN \
+    -e RO_ADMIN_OPERATOR_TOKEN -e RO_ADMIN_READER_TOKEN -e RO_ADMIN_PUBLIC \
+    -e RO_OTEL_ENABLED -e RO_OTEL_ENDPOINT -e RO_OTEL_SERVICE_NAME \
+    -e RO_OTEL_SAMPLE_RATIO \
+    -e RO_CONTROLLER_URL -e RO_CONTROLLER_TOKEN \
+    -v {{ ro_gateway_config_dir }}/gateway.json:/etc/rokh-oghab/gateway.json:ro \
+    -v {{ ro_gateway_config_dir }}/bundle.json:/etc/rokh-oghab/bundle.json:ro \
+    {{ ro_gateway_image }}
+ExecStop=/usr/bin/{{ ro_gateway_runtime }} stop -t 20 {{ ro_gateway_container_name }}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

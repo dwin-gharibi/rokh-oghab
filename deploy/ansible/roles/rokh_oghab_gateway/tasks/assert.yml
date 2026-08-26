@@ -1,0 +1,28 @@
+---
+- name: Refuse to deploy a gateway without an admin token
+  ansible.builtin.assert:
+    that:
+      - ro_gateway_admin_token | length >= 16
+    fail_msg: >-
+      ro_gateway_admin_token must be set to at least sixteen characters.
+      Without it the gateway refuses every privileged admin request, which is
+      safe but leaves the deployment unmanageable.
+
+- name: Refuse to deploy a gateway that trusts anonymous callers by accident
+  ansible.builtin.assert:
+    that:
+      - not (ro_gateway_allow_anonymous | bool)
+    fail_msg: >-
+      ro_gateway_allow_anonymous is true. Every workload that reaches the proxy
+      would be treated as one anonymous identity. Set it explicitly in your
+      inventory if that is genuinely what you want.
+  when: not (ro_gateway_allow_anonymous_acknowledged | default(false) | bool)
+
+- name: Require a controller token when a controller URL is configured
+  ansible.builtin.assert:
+    that:
+      - ro_gateway_controller_token | length > 0
+    fail_msg: >-
+      ro_gateway_controller_url is set but ro_gateway_controller_token is
+      empty, so the gateway could never fetch a policy bundle.
+  when: ro_gateway_controller_url | length > 0

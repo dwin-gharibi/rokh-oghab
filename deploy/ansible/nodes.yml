@@ -1,0 +1,9 @@
+---
+- name: Enforce sandbox egress on every node
+  hosts: sandbox_nodes
+  become: true
+  gather_facts: true
+  serial: "25%"
+  roles:
+    - role: rokh_oghab_host
+      tags: [host, agent]

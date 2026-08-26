@@ -1,0 +1,14 @@
+---
+ro_controller_endpoint: "http://10.0.10.11:8081"
+ro_gateway_service_address: "10.0.10.21"
+
+ro_sandbox_pod_cidrs:
+  - 10.244.0.0/16
+
+ro_gateway_blocked_cidrs:
+  - 10.96.0.0/12
+  - 10.244.0.0/16
+
+ro_gateway_admin_allow_from:
+  - 127.0.0.1/32
+  - 10.0.10.0/24

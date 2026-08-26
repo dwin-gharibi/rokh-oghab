@@ -1,0 +1,25 @@
+---
+- name: Pull the gateway image
+  ansible.builtin.command:
+    cmd: "{{ ro_gateway_runtime }} pull {{ ro_gateway_image }}"
+  register: ro_gateway_pull
+  changed_when: "'Downloaded newer image' in ro_gateway_pull.stdout"
+  failed_when: ro_gateway_pull.rc != 0
+
+- name: Install the gateway service unit
+  ansible.builtin.template:
+    src: rokh-oghab-gateway.service.j2
+    dest: /etc/systemd/system/rokh-oghab-gateway.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart the gateway
+
+- name: Enable and start the gateway
+  ansible.builtin.systemd:
+    name: rokh-oghab-gateway
+    enabled: true
+    state: started
+    daemon_reload: true

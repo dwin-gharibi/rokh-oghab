@@ -1,0 +1,11 @@
+---
+- name: Fail early when the gateway address is not configured
+  ansible.builtin.assert:
+    that:
+      - ro_agent_gateway_addr | length > 0
+      - ro_agent_sandbox_cidrs | length > 0
+    fail_msg: >-
+      ro_agent_gateway_addr and ro_agent_sandbox_cidrs must be set. Without
+      them the node cannot tell which workloads to confine or where to send
+      their traffic, and the role would leave the host unprotected.
+  when: ro_agent_enabled | bool

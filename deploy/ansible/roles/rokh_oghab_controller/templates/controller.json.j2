@@ -1,0 +1,12 @@
+{
+  "dataDir": "/var/lib/rokh-oghab",
+  "allowFrom": {{ ro_controller_allow_from | to_json }},
+  "principals": [],
+  "audit": {
+    "path": "/dev/stdout",
+    "level": "info",
+    "capacity": 2048,
+    "bufferMax": 1,
+    "flushInterval": 0.2
+  }
+}

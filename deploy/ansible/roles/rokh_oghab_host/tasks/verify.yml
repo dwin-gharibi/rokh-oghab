@@ -1,0 +1,7 @@
+---
+- name: Confirm the enforcement table is present
+  ansible.builtin.command: "{{ ro_agent_binary_dest }} status"
+  register: ro_agent_status
+  changed_when: false
+  failed_when: ro_agent_status.rc != 0
+  when: ro_agent_enabled | bool

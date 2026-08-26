@@ -1,0 +1,34 @@
+---
+- name: Stop all sandbox egress immediately
+  hosts: rokh_oghab_controllers
+  become: false
+  gather_facts: false
+  vars:
+    ro_emergency_state: "on"
+  tasks:
+    - name: Assert the operator chose a state deliberately
+      ansible.builtin.assert:
+        that:
+          - ro_emergency_state in ["on", "off"]
+        fail_msg: "Pass -e ro_emergency_state=on or -e ro_emergency_state=off"
+
+    - name: Engage or lift the emergency deny switch
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:{{ ro_controller_port | default(8081) }}/v1/emergency-deny"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ ro_controller_operator_token }}"
+        body_format: json
+        body:
+          enabled: "{{ ro_emergency_state == 'on' }}"
+        status_code: 200
+      register: ro_emergency_result
+      delegate_to: localhost
+
+    - name: Report the new state
+      ansible.builtin.debug:
+        msg: >-
+          Emergency deny is now
+          {{ 'engaged, all sandbox egress is refused' if ro_emergency_state == 'on'
+             else 'lifted, policy decides again' }}
+          (bundle version {{ ro_emergency_result.json.version }})

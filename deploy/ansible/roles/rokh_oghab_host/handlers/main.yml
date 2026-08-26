@@ -1,0 +1,10 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart the enforcement agent
+  ansible.builtin.systemd:
+    name: ro-agent
+    state: restarted
+    daemon_reload: true

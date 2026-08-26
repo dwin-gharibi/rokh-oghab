@@ -1,0 +1,8 @@
+---
+- name: Deploy the Rokh Oghab control plane
+  hosts: rokh_oghab_controllers
+  become: true
+  gather_facts: true
+  roles:
+    - role: rokh_oghab_controller
+      tags: [controller]

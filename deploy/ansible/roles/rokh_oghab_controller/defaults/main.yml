@@ -1,0 +1,17 @@
+---
+ro_controller_image: ghcr.io/rokh-oghab/controller:latest
+ro_controller_container_name: rokh-oghab-controller
+ro_controller_config_dir: /etc/rokh-oghab
+ro_controller_data_dir: /var/lib/rokh-oghab-controller
+ro_controller_runtime: docker
+ro_controller_port: 8081
+ro_controller_bind_address: 127.0.0.1
+
+ro_controller_admin_token: ""
+ro_controller_operator_token: ""
+ro_controller_reader_token: ""
+ro_controller_gateway_token: ""
+ro_controller_allow_from: []
+
+ro_controller_cpus: "1"
+ro_controller_memory: 256m

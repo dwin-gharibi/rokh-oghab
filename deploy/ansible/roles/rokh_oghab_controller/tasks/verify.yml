@@ -1,0 +1,20 @@
+---
+- name: Wait for the controller listener
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ ro_controller_port }}"
+    timeout: 60
+
+- name: Check that the controller reports healthy
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ ro_controller_port }}/healthz"
+    return_content: true
+  register: ro_controller_health
+  retries: 10
+  delay: 3
+  until: ro_controller_health.status == 200
+
+- name: Check that the controller refuses an unauthenticated request
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ ro_controller_port }}/v1/status"
+    status_code: 401

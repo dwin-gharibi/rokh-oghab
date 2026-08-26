@@ -1,0 +1,35 @@
+[Unit]
+Description=Rokh Oghab policy control plane
+Documentation=https://github.com/dwin-gharibi/rokh-oghab
+After=network-online.target {{ ro_controller_runtime }}.service
+Wants=network-online.target
+Requires={{ ro_controller_runtime }}.service
+
+[Service]
+Type=exec
+EnvironmentFile=/etc/default/rokh-oghab-controller
+ExecStartPre=-/usr/bin/{{ ro_controller_runtime }} rm -f {{ ro_controller_container_name }}
+ExecStart=/usr/bin/{{ ro_controller_runtime }} run \
+    --name {{ ro_controller_container_name }} \
+    --rm \
+    --read-only \
+    --user 65532:65532 \
+    --cap-drop ALL \
+    --security-opt no-new-privileges \
+    --tmpfs /run/rokh-oghab:uid=65532,gid=65532,mode=0700 \
+    --tmpfs /tmp:uid=65532,gid=65532,mode=0700 \
+    --cpus {{ ro_controller_cpus }} \
+    --memory {{ ro_controller_memory }} \
+    -p {{ ro_controller_bind_address }}:{{ ro_controller_port }}:8081 \
+    -e RO_CONTROLLER_CONFIG -e RO_CONTROLLER_DATA_DIR \
+    -e RO_CONTROLLER_ADMIN_TOKEN -e RO_CONTROLLER_OPERATOR_TOKEN \
+    -e RO_CONTROLLER_READER_TOKEN -e RO_CONTROLLER_GATEWAY_TOKEN \
+    -v {{ ro_controller_config_dir }}/controller.json:/etc/rokh-oghab/controller.json:ro \
+    -v {{ ro_controller_data_dir }}:/var/lib/rokh-oghab \
+    {{ ro_controller_image }}
+ExecStop=/usr/bin/{{ ro_controller_runtime }} stop -t 20 {{ ro_controller_container_name }}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,22 @@
+---
+- name: Check that the role has everything it needs
+  ansible.builtin.include_tasks: assert.yml
+  tags: [rokh-oghab, host, assert]
+
+- name: Install packages
+  ansible.builtin.include_tasks: packages.yml
+  tags: [rokh-oghab, host, packages]
+
+- name: Harden kernel networking
+  ansible.builtin.include_tasks: sysctl.yml
+  tags: [rokh-oghab, host, sysctl]
+
+- name: Install and run the enforcement agent
+  ansible.builtin.include_tasks: agent.yml
+  when: ro_agent_enabled | bool
+  tags: [rokh-oghab, host, agent]
+
+- name: Verify enforcement is active
+  ansible.builtin.include_tasks: verify.yml
+  when: ro_agent_enabled | bool
+  tags: [rokh-oghab, host, verify]

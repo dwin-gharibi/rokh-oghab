@@ -1,0 +1,54 @@
+---
+ro_gateway_image: ghcr.io/rokh-oghab/gateway:latest
+ro_gateway_container_name: rokh-oghab-gateway
+ro_gateway_config_dir: /etc/rokh-oghab
+ro_gateway_state_dir: /var/lib/rokh-oghab
+ro_gateway_runtime: docker
+
+ro_gateway_node_name: "{{ inventory_hostname }}"
+ro_gateway_mode: explicit
+ro_gateway_proxy_port: 3128
+ro_gateway_dns_port: 5353
+ro_gateway_admin_port: 9145
+ro_gateway_transparent_http_port: 3080
+ro_gateway_transparent_tls_port: 3443
+ro_gateway_bind_address: 0.0.0.0
+ro_gateway_admin_bind_address: 127.0.0.1
+
+ro_gateway_controller_url: ""
+ro_gateway_controller_token: ""
+ro_gateway_admin_token: ""
+ro_gateway_admin_operator_token: ""
+ro_gateway_admin_reader_token: ""
+ro_gateway_otel_enabled: false
+ro_gateway_otel_endpoint: ""
+ro_gateway_otel_service_name: rokh-oghab-gateway
+ro_gateway_otel_sample_ratio: 1.0
+ro_gateway_admin_public:
+  - healthz
+  - readyz
+  - metrics
+
+ro_gateway_resolvers:
+  - 1.1.1.1:53
+  - 8.8.8.8:53
+ro_gateway_blocked_cidrs: []
+ro_gateway_allow_exceptions: []
+ro_gateway_block_obfuscated: true
+ro_gateway_allow_ipv6: true
+ro_gateway_min_tls_version: "1.2"
+ro_gateway_tls_ports: [443, 8443, 9443]
+ro_gateway_strict_path: true
+ro_gateway_sni_match: true
+ro_gateway_host_match: true
+ro_gateway_redirect_guard: true
+ro_gateway_allow_anonymous: false
+ro_gateway_log_paths: false
+ro_gateway_global_max_connections: 20000
+ro_gateway_admin_allow_from:
+  - 127.0.0.1/32
+ro_gateway_dns_allowed_types: ["A", "AAAA"]
+ro_gateway_dns_deny_response: nxdomain
+
+ro_gateway_cpus: "2"
+ro_gateway_memory: 512m

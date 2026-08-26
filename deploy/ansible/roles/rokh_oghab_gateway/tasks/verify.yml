@@ -1,0 +1,23 @@
+---
+- name: Wait for the gateway admin listener
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ ro_gateway_admin_port }}"
+    timeout: 60
+
+- name: Check that the gateway reports healthy
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ ro_gateway_admin_port }}/healthz"
+    return_content: true
+  register: ro_gateway_health
+  retries: 10
+  delay: 3
+  until: ro_gateway_health.status == 200
+
+- name: Check that the gateway refuses an unidentified request
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ ro_gateway_proxy_port }}"
+    method: GET
+    status_code: [400, 403, 407]
+  register: ro_gateway_denial
+  failed_when: ro_gateway_denial.status not in [400, 403, 407]

@@ -1,0 +1,10 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart the controller
+  ansible.builtin.systemd:
+    name: rokh-oghab-controller
+    state: restarted
+    daemon_reload: true

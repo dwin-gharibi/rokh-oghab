@@ -1,0 +1,9 @@
+---
+- name: Deploy the Rokh Oghab data plane
+  hosts: rokh_oghab_gateways
+  become: true
+  gather_facts: true
+  serial: 1
+  roles:
+    - role: rokh_oghab_gateway
+      tags: [gateway]

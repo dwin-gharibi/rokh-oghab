@@ -1,0 +1,4 @@
+---
+ro_gateway_controller_url: "{{ ro_controller_endpoint }}"
+ro_gateway_admin_bind_address: 0.0.0.0
+ro_gateway_bind_address: 0.0.0.0

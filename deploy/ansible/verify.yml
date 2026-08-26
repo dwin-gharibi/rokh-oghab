@@ -1,0 +1,73 @@
+---
+- name: Verify the control plane
+  hosts: rokh_oghab_controllers
+  become: false
+  gather_facts: false
+  tasks:
+    - name: The controller answers health checks
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:{{ ro_controller_port | default(8081) }}/healthz"
+        status_code: 200
+      delegate_to: localhost
+
+    - name: The controller refuses unauthenticated access
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:{{ ro_controller_port | default(8081) }}/v1/status"
+        status_code: 401
+      delegate_to: localhost
+
+- name: Verify the data plane
+  hosts: rokh_oghab_gateways
+  become: false
+  gather_facts: false
+  tasks:
+    - name: The gateway answers health checks
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:{{ ro_gateway_admin_port | default(9145) }}/healthz"
+        status_code: 200
+      delegate_to: localhost
+
+    - name: The gateway exposes metrics
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:{{ ro_gateway_admin_port | default(9145) }}/metrics"
+        return_content: true
+      register: ro_metrics
+      delegate_to: localhost
+      failed_when: "'ro_requests_total' not in ro_metrics.content"
+
+    - name: The gateway refuses an unidentified request
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:{{ ro_gateway_proxy_port | default(3128) }}"
+        status_code: [400, 403, 407]
+      delegate_to: localhost
+
+- name: Verify node enforcement
+  hosts: sandbox_nodes
+  become: true
+  gather_facts: false
+  tasks:
+    - name: The enforcement table is present
+      ansible.builtin.command: /usr/local/bin/ro-agent status
+      register: ro_agent_state
+      changed_when: false
+
+    - name: The sandbox chain ends in a drop
+      ansible.builtin.assert:
+        that:
+          - "'drop' in ro_agent_state.stdout"
+        fail_msg: >-
+          The sandbox chain does not end in a drop, so traffic that matches no
+          rule would be allowed out.
+
+    - name: Reverse path filtering rejects forged sources
+      ansible.builtin.slurp:
+        src: /proc/sys/net/ipv4/conf/all/rp_filter
+      register: ro_rp_filter
+
+    - name: Reverse path filtering must be enabled
+      ansible.builtin.assert:
+        that:
+          - (ro_rp_filter.content | b64decode | trim) != "0"
+        fail_msg: >-
+          Reverse path filtering is disabled, so a workload holding NET_RAW
+          could send packets with a forged source address.

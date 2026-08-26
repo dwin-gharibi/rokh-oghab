@@ -1,0 +1,30 @@
+---
+- name: Render the gateway configuration
+  ansible.builtin.template:
+    src: gateway.json.j2
+    dest: "{{ ro_gateway_config_dir }}/gateway.json"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "python3 -c \"import json,sys; json.load(open(sys.argv[1]))\" %s"
+  notify: Restart the gateway
+
+- name: Install the bootstrap policy bundle
+  ansible.builtin.template:
+    src: bootstrap-bundle.json.j2
+    dest: "{{ ro_gateway_config_dir }}/bundle.json"
+    owner: root
+    group: root
+    mode: "0644"
+    force: false
+    validate: "python3 -c \"import json,sys; json.load(open(sys.argv[1]))\" %s"
+  notify: Restart the gateway
+
+- name: Write the gateway environment file
+  ansible.builtin.template:
+    src: gateway.env.j2
+    dest: /etc/default/rokh-oghab-gateway
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart the gateway

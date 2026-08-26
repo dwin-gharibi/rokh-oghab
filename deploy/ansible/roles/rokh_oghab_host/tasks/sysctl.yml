@@ -1,0 +1,12 @@
+---
+- name: Apply kernel network hardening
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: true
+    state: present
+    reload: true
+    sysctl_file: /etc/sysctl.d/60-rokh-oghab.conf
+  loop: "{{ ro_host_sysctls | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"

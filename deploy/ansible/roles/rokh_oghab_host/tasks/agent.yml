@@ -1,0 +1,50 @@
+---
+- name: Install the node enforcement agent
+  ansible.builtin.copy:
+    src: "{{ ro_agent_binary_src }}"
+    dest: "{{ ro_agent_binary_dest }}"
+    owner: root
+    group: root
+    mode: "0555"
+  notify: Restart the enforcement agent
+  when: ro_agent_enabled | bool
+
+- name: Write the enforcement agent environment
+  ansible.builtin.template:
+    src: ro-agent.env.j2
+    dest: /etc/default/ro-agent
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart the enforcement agent
+  when: ro_agent_enabled | bool
+
+- name: Install the enforcement agent service unit
+  ansible.builtin.template:
+    src: ro-agent.service.j2
+    dest: /etc/systemd/system/ro-agent.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart the enforcement agent
+  when: ro_agent_enabled | bool
+
+- name: Validate the generated ruleset before enabling the service
+  ansible.builtin.shell:
+    cmd: >-
+      set -a; . /etc/default/ro-agent; set +a;
+      {{ ro_agent_binary_dest }} check
+  args:
+    executable: /bin/sh
+  changed_when: false
+  when: ro_agent_enabled | bool
+
+- name: Enable and start the enforcement agent
+  ansible.builtin.systemd:
+    name: ro-agent
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: ro_agent_enabled | bool

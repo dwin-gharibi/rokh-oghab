@@ -1,0 +1,26 @@
+---
+- name: Refuse to deploy a controller without an administrative token
+  ansible.builtin.assert:
+    that:
+      - ro_controller_admin_token | length >= 16
+    fail_msg: >-
+      ro_controller_admin_token must be at least sixteen characters. Without a
+      principal the controller refuses every authenticated request, so nothing
+      could ever be published.
+
+- name: Require a gateway token so gateways can fetch bundles
+  ansible.builtin.assert:
+    that:
+      - ro_controller_gateway_token | length >= 16
+    fail_msg: >-
+      ro_controller_gateway_token must be set so gateways can read published
+      bundles without holding administrative rights.
+
+- name: Warn when tokens are reused across roles
+  ansible.builtin.assert:
+    that:
+      - ro_controller_admin_token != ro_controller_gateway_token
+    fail_msg: >-
+      The administrative token and the gateway token are identical. A gateway
+      would then be able to rewrite policy, which defeats the separation
+      between the data plane and the control plane.

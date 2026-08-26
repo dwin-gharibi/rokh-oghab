@@ -1,0 +1,12 @@
+---
+- name: Deploy the Rokh Oghab control plane
+  ansible.builtin.import_playbook: controller.yml
+
+- name: Deploy the Rokh Oghab data plane
+  ansible.builtin.import_playbook: gateway.yml
+
+- name: Enforce sandbox egress on every node
+  ansible.builtin.import_playbook: nodes.yml
+
+- name: Verify the whole deployment
+  ansible.builtin.import_playbook: verify.yml

@@ -1,0 +1,74 @@
+{
+  "node": {{ ro_gateway_node_name | to_json }},
+  "mode": {{ ro_gateway_mode | to_json }},
+  "bundleFile": "{{ ro_gateway_config_dir }}/bundle.json",
+  "controller": {
+    "url": {{ ro_gateway_controller_url | to_json }},
+    "token": "",
+    "pollSeconds": 10,
+    "timeoutMs": 3000,
+    "failClosed": true
+  },
+  "resolver": {
+    "servers": {{ ro_gateway_resolvers | to_json }},
+    "timeoutMs": 2000,
+    "retries": 2,
+    "minTtl": 5,
+    "maxTtl": 300,
+    "allowIPv6": {{ ro_gateway_allow_ipv6 | to_json }},
+    "preferIPv6": false,
+    "maxAddresses": 8
+  },
+  "guard": {
+    "includeDefaults": true,
+    "blocked": {{ ro_gateway_blocked_cidrs | to_json }},
+    "allowExceptions": {{ ro_gateway_allow_exceptions | to_json }},
+    "blockObfuscated": {{ ro_gateway_block_obfuscated | to_json }},
+    "allowIPv6": {{ ro_gateway_allow_ipv6 | to_json }}
+  },
+  "strict": {
+    "path": {{ ro_gateway_strict_path | to_json }},
+    "sniMatch": {{ ro_gateway_sni_match | to_json }},
+    "hostMatch": {{ ro_gateway_host_match | to_json }},
+    "requireTls": false,
+    "minTlsVersion": {{ ro_gateway_min_tls_version | to_json }},
+    "redirectGuard": {{ ro_gateway_redirect_guard | to_json }},
+    "blockPlaintextOnTlsPorts": true,
+    "tlsPorts": {{ ro_gateway_tls_ports | to_json }},
+    "verifyOriginalDestination": false
+  },
+  "limits": {
+    "maxHeadBytes": 65536,
+    "maxRequestsPerConnection": 256,
+    "clientTimeoutMs": 60000,
+    "upstreamTimeoutMs": 30000,
+    "connectTimeoutMs": 5000,
+    "idleTimeoutMs": 120000,
+    "globalMaxConnections": {{ ro_gateway_global_max_connections }},
+    "defaultRequestsPerSecond": 0,
+    "defaultMaxConnections": 0
+  },
+  "audit": {
+    "path": "/dev/stdout",
+    "level": "info",
+    "logPaths": {{ ro_gateway_log_paths | to_json }},
+    "logQuery": false,
+    "capacity": 4096,
+    "bufferMax": 64,
+    "flushInterval": 0.2
+  },
+  "dns": {
+    "enabled": true,
+    "upstreamTimeoutMs": 2000,
+    "allowedTypes": {{ ro_gateway_dns_allowed_types | to_json }},
+    "maxAnswers": 8,
+    "denyResponse": {{ ro_gateway_dns_deny_response | to_json }}
+  },
+  "admin": {
+    "token": "",
+    "allowFrom": {{ ro_gateway_admin_allow_from | to_json }}
+  },
+  "identities": {
+    "allowAnonymous": {{ ro_gateway_allow_anonymous | to_json }}
+  }
+}

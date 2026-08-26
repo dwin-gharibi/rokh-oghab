@@ -1,0 +1,32 @@
+---
+ro_host_packages:
+  - nftables
+  - ca-certificates
+
+ro_host_sysctls:
+  net.ipv4.conf.all.rp_filter: "1"
+  net.ipv4.conf.default.rp_filter: "1"
+  net.ipv4.ip_forward: "1"
+  net.ipv4.conf.all.accept_redirects: "0"
+  net.ipv4.conf.all.send_redirects: "0"
+  net.ipv4.conf.all.accept_source_route: "0"
+  net.ipv4.conf.all.log_martians: "1"
+  net.ipv6.conf.all.accept_redirects: "0"
+  net.ipv6.conf.all.accept_source_route: "0"
+  net.netfilter.nf_conntrack_max: "262144"
+
+ro_agent_enabled: true
+ro_agent_binary_src: "{{ playbook_dir }}/../../bin/ro-agent"
+ro_agent_binary_dest: /usr/local/bin/ro-agent
+ro_agent_gateway_addr: ""
+ro_agent_proxy_port: 3128
+ro_agent_dns_port: 5353
+ro_agent_sandbox_cidrs: []
+ro_agent_allow_cidrs: []
+ro_agent_sandbox_ifaces: []
+ro_agent_hook: forward
+ro_agent_block_ipv6: true
+ro_agent_transparent: false
+ro_agent_dns_redirect: true
+ro_agent_log_drops: false
+ro_agent_reconcile_seconds: 15
