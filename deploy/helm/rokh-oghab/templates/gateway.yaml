@@ -143,6 +143,19 @@ spec:
                 secretKeyRef:
                   name: {{ include "rokh-oghab.tokenSecretName" . }}
                   key: gateway
+            {{- if .Values.controller.signBundles }}
+            - name: RO_CONTROLLER_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "rokh-oghab.tokenSecretName" . }}
+                  key: bundleSigning
+            - name: RO_CONTROLLER_REQUIRE_SIGNATURE
+              value: {{ .Values.controller.requireSignature | quote }}
+            {{- with .Values.controller.acceptSigningKeys }}
+            - name: RO_CONTROLLER_ACCEPT_SIGNING_KEYS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- end }}
             {{- end }}
             - name: RO_ADMIN_TOKEN
               valueFrom:

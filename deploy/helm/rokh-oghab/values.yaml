@@ -50,6 +50,7 @@ tokens:
   gatewayAdmin: ""
   gatewayAdminOperator: ""
   gatewayAdminReader: ""
+  bundleSigning: ""
 
 gateway:
   enabled: true
@@ -195,6 +196,9 @@ controller:
   affinity: {}
   pollSeconds: 10
   failClosed: true
+  signBundles: true
+  requireSignature: true
+  acceptSigningKeys: []
 
 agent:
   enabled: true

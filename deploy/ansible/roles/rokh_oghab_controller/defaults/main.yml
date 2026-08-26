@@ -11,6 +11,7 @@ ro_controller_admin_token: ""
 ro_controller_operator_token: ""
 ro_controller_reader_token: ""
 ro_controller_gateway_token: ""
+ro_controller_bundle_signing_key: ""
 ro_controller_allow_from: []
 
 ro_controller_cpus: "1"

@@ -184,10 +184,22 @@
         "failClosed": {
           "type": "boolean"
         },
+        "signBundles": {
+          "type": "boolean"
+        },
+        "requireSignature": {
+          "type": "boolean"
+        },
         "pollSeconds": {
           "type": "integer",
           "minimum": 1,
           "maximum": 3600
+        },
+        "acceptSigningKeys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },

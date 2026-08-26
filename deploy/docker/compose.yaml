@@ -29,6 +29,7 @@ services:
       RO_CONTROLLER_OPERATOR_TOKEN: ${RO_CONTROLLER_OPERATOR_TOKEN:-}
       RO_CONTROLLER_READER_TOKEN: ${RO_CONTROLLER_READER_TOKEN:-}
       RO_CONTROLLER_GATEWAY_TOKEN: ${RO_CONTROLLER_GATEWAY_TOKEN:?set a gateway token}
+      RO_CONTROLLER_BUNDLE_SIGNING_KEY: ${RO_BUNDLE_SIGNING_KEY:?set a strong bundle signing key}
     volumes:
       - ro_controller_data:/var/lib/rokh-oghab
     tmpfs:
@@ -61,6 +62,8 @@ services:
       RO_NODE: ro-gateway-1
       RO_CONTROLLER_URL: http://controller:8081
       RO_CONTROLLER_TOKEN: ${RO_CONTROLLER_GATEWAY_TOKEN:?set a gateway token}
+      RO_CONTROLLER_SIGNING_KEY: ${RO_BUNDLE_SIGNING_KEY:?set a strong bundle signing key}
+      RO_CONTROLLER_REQUIRE_SIGNATURE: "true"
       RO_ADMIN_TOKEN: ${RO_GATEWAY_ADMIN_TOKEN:?set a gateway admin token}
       RO_ADMIN_OPERATOR_TOKEN: ${RO_GATEWAY_ADMIN_OPERATOR_TOKEN:-}
       RO_ADMIN_READER_TOKEN: ${RO_GATEWAY_ADMIN_READER_TOKEN:-}

@@ -134,6 +134,13 @@ spec:
                 secretKeyRef:
                   name: rokh-oghab-gateway-tokens
                   key: controller
+            - name: RO_CONTROLLER_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rokh-oghab-gateway-tokens
+                  key: signingKey
+            - name: RO_CONTROLLER_REQUIRE_SIGNATURE
+              value: "true"
             - name: RO_ADMIN_TOKEN
               valueFrom:
                 secretKeyRef:

@@ -17,6 +17,9 @@ ro_gateway_admin_bind_address: 127.0.0.1
 
 ro_gateway_controller_url: ""
 ro_gateway_controller_token: ""
+ro_gateway_controller_signing_key: ""
+ro_gateway_controller_accept_signing_keys: []
+ro_gateway_controller_require_signature: true
 ro_gateway_admin_token: ""
 ro_gateway_admin_operator_token: ""
 ro_gateway_admin_reader_token: ""

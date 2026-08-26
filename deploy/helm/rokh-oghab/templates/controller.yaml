@@ -101,6 +101,13 @@ spec:
                 secretKeyRef:
                   name: {{ include "rokh-oghab.tokenSecretName" . }}
                   key: gateway
+            {{- if .Values.controller.signBundles }}
+            - name: RO_CONTROLLER_BUNDLE_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "rokh-oghab.tokenSecretName" . }}
+                  key: bundleSigning
+            {{- end }}
           securityContext:
             {{- include "rokh-oghab.containerSecurityContext" . | nindent 12 }}
           resources:
