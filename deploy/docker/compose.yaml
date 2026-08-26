@@ -1,0 +1,123 @@
+name: rokh-oghab
+
+networks:
+  ro_control:
+    driver: bridge
+    internal: true
+  ro_egress:
+    driver: bridge
+  ro_sandbox:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.80.0.0/24
+
+volumes:
+  ro_controller_data:
+
+services:
+  controller:
+    image: ${RO_CONTROLLER_IMAGE:-ghcr.io/rokh-oghab/controller:latest}
+    restart: unless-stopped
+    read_only: true
+    user: "65532:65532"
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      RO_CONTROLLER_ADMIN_TOKEN: ${RO_CONTROLLER_ADMIN_TOKEN:?set a strong admin token}
+      RO_CONTROLLER_OPERATOR_TOKEN: ${RO_CONTROLLER_OPERATOR_TOKEN:-}
+      RO_CONTROLLER_READER_TOKEN: ${RO_CONTROLLER_READER_TOKEN:-}
+      RO_CONTROLLER_GATEWAY_TOKEN: ${RO_CONTROLLER_GATEWAY_TOKEN:?set a gateway token}
+    volumes:
+      - ro_controller_data:/var/lib/rokh-oghab
+    tmpfs:
+      - /run/rokh-oghab:uid=65532,gid=65532,mode=0700
+      - /tmp:uid=65532,gid=65532,mode=0700
+    networks:
+      - ro_control
+    healthcheck:
+      test: ["CMD-SHELL", "/usr/local/openresty/bin/resty -e 'local s=ngx.socket.tcp() s:settimeout(2000) if not s:connect(\"127.0.0.1\",8081) then os.exit(1) end'"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+
+  gateway:
+    image: ${RO_GATEWAY_IMAGE:-ghcr.io/rokh-oghab/gateway:latest}
+    restart: unless-stopped
+    read_only: true
+    user: "65532:65532"
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      controller:
+        condition: service_healthy
+    environment:
+      RO_NODE: ro-gateway-1
+      RO_CONTROLLER_URL: http://controller:8081
+      RO_CONTROLLER_TOKEN: ${RO_CONTROLLER_GATEWAY_TOKEN:?set a gateway token}
+      RO_ADMIN_TOKEN: ${RO_GATEWAY_ADMIN_TOKEN:?set a gateway admin token}
+      RO_ADMIN_OPERATOR_TOKEN: ${RO_GATEWAY_ADMIN_OPERATOR_TOKEN:-}
+      RO_ADMIN_READER_TOKEN: ${RO_GATEWAY_ADMIN_READER_TOKEN:-}
+      RO_OTEL_ENABLED: ${RO_OTEL_ENABLED:-false}
+      RO_OTEL_ENDPOINT: ${RO_OTEL_ENDPOINT:-}
+      RO_RESOLVER_SERVERS: ${RO_RESOLVER_SERVERS:-1.1.1.1:53,8.8.8.8:53}
+    volumes:
+      - ./gateway.json:/etc/rokh-oghab/gateway.json:ro
+      - ./bootstrap-bundle.json:/etc/rokh-oghab/bundle.json:ro
+    tmpfs:
+      - /run/rokh-oghab:uid=65532,gid=65532,mode=0700
+    networks:
+      ro_control:
+      ro_egress:
+      ro_sandbox:
+        ipv4_address: 10.80.0.5
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    healthcheck:
+      test: ["CMD-SHELL", "/usr/local/openresty/bin/resty -e 'local s=ngx.socket.tcp() s:settimeout(2000) if not s:connect(\"127.0.0.1\",9145) then os.exit(1) end'"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 512M
+
+  sandbox:
+    image: ${RO_SANDBOX_IMAGE:-python:3.12-alpine}
+    restart: unless-stopped
+    read_only: true
+    user: "1000:1000"
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      gateway:
+        condition: service_healthy
+    environment:
+      HTTP_PROXY: http://10.80.0.5:3128
+      HTTPS_PROXY: http://10.80.0.5:3128
+      http_proxy: http://10.80.0.5:3128
+      https_proxy: http://10.80.0.5:3128
+      NO_PROXY: ""
+      no_proxy: ""
+      RO_PROXY_TOKEN: ${RO_SANDBOX_TOKEN:?issue a token with roctl identity issue}
+    command: ["sleep", "infinity"]
+    tmpfs:
+      - /tmp:uid=1000,gid=1000,mode=0700
+    networks:
+      - ro_sandbox
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+          pids: 256

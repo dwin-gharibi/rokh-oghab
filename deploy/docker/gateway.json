@@ -1,0 +1,109 @@
+{
+  "node": "ro-gateway-1",
+  "mode": "explicit",
+  "bundleFile": "/etc/rokh-oghab/bundle.json",
+  "controller": {
+    "url": "http://controller:8081",
+    "token": "",
+    "pollSeconds": 10,
+    "timeoutMs": 3000,
+    "failClosed": true
+  },
+  "resolver": {
+    "servers": [
+      "1.1.1.1:53",
+      "8.8.8.8:53"
+    ],
+    "timeoutMs": 2000,
+    "retries": 2,
+    "minTtl": 5,
+    "maxTtl": 300,
+    "allowIPv6": true,
+    "preferIPv6": false,
+    "maxAddresses": 8
+  },
+  "guard": {
+    "includeDefaults": true,
+    "blocked": [],
+    "allowExceptions": [],
+    "blockObfuscated": true,
+    "allowIPv6": true
+  },
+  "strict": {
+    "path": true,
+    "sniMatch": true,
+    "hostMatch": true,
+    "requireTls": false,
+    "minTlsVersion": "1.2",
+    "redirectGuard": true,
+    "blockPlaintextOnTlsPorts": true,
+    "verifyOriginalDestination": false,
+    "tlsPorts": [
+      443,
+      8443,
+      9443
+    ]
+  },
+  "limits": {
+    "maxHeadBytes": 65536,
+    "maxRequestsPerConnection": 256,
+    "clientTimeoutMs": 60000,
+    "upstreamTimeoutMs": 30000,
+    "connectTimeoutMs": 5000,
+    "idleTimeoutMs": 120000,
+    "globalMaxConnections": 20000,
+    "defaultRequestsPerSecond": 0,
+    "defaultMaxConnections": 0
+  },
+  "audit": {
+    "path": "/dev/stdout",
+    "level": "info",
+    "logPaths": false,
+    "logQuery": false,
+    "capacity": 4096,
+    "bufferMax": 64,
+    "flushInterval": 0.2
+  },
+  "dns": {
+    "enabled": true,
+    "upstreamTimeoutMs": 2000,
+    "allowedTypes": [
+      "A",
+      "AAAA"
+    ],
+    "maxAnswers": 8,
+    "denyResponse": "nxdomain"
+  },
+  "admin": {
+    "token": "",
+    "allowFrom": [
+      "10.80.0.0/24",
+      "127.0.0.1/32"
+    ],
+    "readerToken": "",
+    "operatorToken": "",
+    "public": [
+      "healthz",
+      "readyz",
+      "metrics"
+    ]
+  },
+  "identities": {
+    "allowAnonymous": false
+  },
+  "telemetry": {
+    "enabled": false,
+    "endpoint": "",
+    "tracesPath": "/v1/traces",
+    "serviceName": "rokh-oghab-gateway",
+    "serviceNamespace": "rokh-oghab",
+    "headers": {},
+    "sampleRatio": 1.0,
+    "maxQueue": 512,
+    "maxBatch": 128,
+    "timeoutMs": 2000,
+    "exportIntervalSeconds": 5,
+    "trustIncomingTrace": false,
+    "recordDestination": false
+  }
+}
